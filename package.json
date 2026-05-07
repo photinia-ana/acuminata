@@ -1,0 +1,19 @@
+{
+  "name": "browser-history-tracker",
+  "version": "1.0.0",
+  "description": "Desktop app with browser extension for tracking browsing history",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "dependencies": {
+    "devcert": "^1.2.3",
+    "mkcert": "^3.2.0",
+    "selfsigned": "^5.5.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^42.0.0"
+  }
+}

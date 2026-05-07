@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Site History Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f14;
+      --surface: #161921;
+      --surface2: #1e2230;
+      --border: #2a2f42;
+      --accent: #5b8dee;
+      --accent2: #e85d8a;
+      --text: #e4e8f5;
+      --text2: #7a80a0;
+      --success: #52c97a;
+      --danger: #e85d5d;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Noto Sans SC', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 360px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+    }
+
+    .header {
+      padding: 16px 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .icon { font-size: 20px; }
+
+    .title {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      font-size: 10px;
+      color: var(--text2);
+      font-family: var(--mono);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.off { background: var(--text2); box-shadow: none; animation: none; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text2);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      font-family: var(--mono);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Records list */
+    .records {
+      max-height: 360px;
+      overflow-y: auto;
+    }
+
+    .records::-webkit-scrollbar { width: 4px; }
+    .records::-webkit-scrollbar-track { background: var(--bg); }
+    .records::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .record-item {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .record-item:hover { background: var(--surface); }
+
+    .record-title {
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 3px;
+    }
+
+    .record-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .record-domain {
+      font-size: 10px;
+      font-family: var(--mono);
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--surface2);
+    }
+
+    .record-time {
+      font-size: 10px;
+      color: var(--text2);
+      font-family: var(--mono);
+    }
+
+    .filter-bar {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+    }
+
+    .filter-chip {
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+      font-family: var(--mono);
+    }
+
+    .filter-chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    /* Stats in popup */
+    .stat-grid {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .mini-stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .mini-stat-val {
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .mini-stat-label {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 2px;
+    }
+
+    .footer {
+      padding: 10px 14px;
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn {
+      flex: 1;
+      padding: 7px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text2);
+      font-size: 12px;
+      cursor: pointer;
+      text-align: center;
+      font-family: var(--sans);
+      transition: all 0.15s;
+    }
+
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .empty {
+      padding: 30px;
+      text-align: center;
+      color: var(--text2);
+      font-size: 13px;
+    }
+
+    .empty-icon { font-size: 28px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <div class="icon">📡</div>
+      <div>
+        <div class="title">History Tracker</div>
+        <div class="subtitle" id="statusText">加载中...</div>
+      </div>
+    </div>
+    <div class="status-dot" id="statusDot"></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="records" id="tabBtnRecords">📋 记录</div>
+    <div class="tab" data-tab="stats" id="tabBtnStats">📊 统计</div>
+  </div>
+
+  <!-- Records Tab -->
+  <div class="tab-content active" id="tab-records">
+    <div class="filter-bar" id="filterBar">
+      <div class="filter-chip active" data-domain="all">全部</div>
+    </div>
+    <div class="records" id="recordsList"></div>
+  </div>
+
+  <!-- Stats Tab -->
+  <div class="tab-content" id="tab-stats">
+    <div class="stat-grid" id="statGrid"></div>
+  </div>
+
+  <div class="footer">
+    <button class="btn" id="btnOptions">⚙ 设置</button>
+    <button class="btn" id="btnExport">⬇ 导出</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
