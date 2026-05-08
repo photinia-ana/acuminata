@@ -30,9 +30,10 @@ function formatTime(ts) {
   });
 }
 
-function getDomainColor(domain) {
+function getDomainColor(val) {
+  // 同时兼容匹配域名或匹配备注(Label)
   const entry = watchlist.find(function (e) {
-    return e.domain === domain;
+    return e.domain === val || e.label === val;
   });
   return entry ? entry.color : "#5b8dee";
 }
@@ -131,12 +132,7 @@ function renderWatchlist() {
 }
 
 function getFilteredRecords() {
-  var filtered =
-    activeFilter === "all"
-      ? records
-      : records.filter(function (r) {
-          return r.matchedRule === activeFilter;
-        });
+  var filtered = records; // 列表直接用服务器返回的
   if (searchQuery) {
     var q = searchQuery.toLowerCase();
     filtered = filtered.filter(function (r) {
@@ -584,7 +580,18 @@ async function clearData() {
 window.electronAPI.onUpdate(function (data) {
   if (data.type === "recordAdded") {
     setWsStatus(true);
-    if (activeFilter === "all" || data.record.matchedRule === activeFilter) {
+
+    // 找出这条新记录所属的伪装归类名
+    var entry = watchlist.find(function (w) {
+      return w.domain === data.record.matchedRule;
+    });
+    var rLabel = entry ? entry.label || entry.domain : data.record.matchedRule;
+
+    if (
+      activeFilter === "all" ||
+      activeFilter === "pinned" ||
+      activeFilter === rLabel
+    ) {
       if (records.length >= totalRecords) {
         totalRecords++;
         loadedAll = records.length >= totalRecords;

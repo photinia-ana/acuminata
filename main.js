@@ -192,38 +192,83 @@ function handleExtensionMessage(ws, msg) {
     case "addRecord": {
       const now = Date.now();
 
-      // 1. 查找数据库中是否已经存在完全相同的 URL
-      const existing = dbGet(
-        "SELECT * FROM records WHERE url = ? ORDER BY timestamp DESC LIMIT 1",
-        [msg.url],
+      // 1. 获取当前站点的分组 Label (如果没备注，就用域名本身作为组)
+      const currentWatch = watchlist.find((w) => w.domain === msg.matchedRule);
+      const groupLabel = currentWatch
+        ? currentWatch.label || msg.domain
+        : msg.domain;
+
+      // 2. 找出同属一个"伪装归类"的所有域名
+      const groupDomains = watchlist
+        .filter((w) => (w.label || w.domain) === groupLabel)
+        .map((w) => w.domain);
+      if (groupDomains.length === 0) groupDomains.push(msg.matchedRule);
+
+      // 3. 解析当前访问的 Path (去除域名，只留 /u1/2 这种路径)
+      let incomingPath = "";
+      try {
+        const u = new URL(msg.url);
+        incomingPath = u.pathname + u.search + u.hash;
+      } catch (e) {
+        incomingPath = msg.url;
+      }
+
+      // 4. 在该归类下，查找是否已存在相同 Path 的记录
+      const placeholders = groupDomains.map(() => "?").join(",");
+      const groupRecords = dbAll(
+        `SELECT * FROM records WHERE matchedRule IN (${placeholders}) ORDER BY timestamp DESC`,
+        groupDomains,
       );
 
-      if (existing) {
-        // [保留原有防抖设计] 如果是同一个标签页，在 60 秒内频繁刷新，直接忽略，防止分数狂飙
-        if (msg.tabId === existing.tabId && now - existing.timestamp < 60000) {
-          return;
+      let existing = null;
+      for (const r of groupRecords) {
+        try {
+          const u = new URL(r.url);
+          if (u.pathname + u.search + u.hash === incomingPath) {
+            existing = r;
+            break;
+          }
+        } catch (e) {
+          if (r.url === msg.url) {
+            existing = r;
+            break;
+          }
         }
+      }
 
-        // 2. 根据用户需求更新状态
-        let newPinned = 1; // 只要重复访问过，就必定变为 Pin 状态
+      if (existing) {
+        // [防刷分] 同一标签页60秒内频繁刷新忽略
+        if (msg.tabId === existing.tabId && now - existing.timestamp < 60000)
+          return;
+
+        let newPinned = 1;
         let newScore = existing.pinned ? (existing.score || 0) + 1 : 1;
 
-        // 3. 更新数据库中的记录（同时更新时间戳，让这条记录浮到时间线的最前面）
+        // 【核心】将旧记录的 URL、domain 更新为当前最新的伪装域名！
         dbRun(
-          "UPDATE records SET pinned = ?, score = ?, timestamp = ? WHERE id = ?",
-          [newPinned, newScore, now, existing.id],
+          "UPDATE records SET url = ?, domain = ?, matchedRule = ?, pinned = ?, score = ?, timestamp = ? WHERE id = ?",
+          [
+            msg.url,
+            msg.domain,
+            msg.matchedRule,
+            newPinned,
+            newScore,
+            now,
+            existing.id,
+          ],
         );
 
-        // 4. 广播通知前端 UI 更新这条记录，而不是插入新记录
+        existing.url = msg.url;
+        existing.domain = msg.domain;
+        existing.matchedRule = msg.matchedRule;
         existing.pinned = newPinned;
         existing.score = newScore;
         existing.timestamp = now;
         broadcastToExtensions({ type: "recordUpdated", record: existing });
-
-        return; // 提前终止，不再执行下方的插入逻辑
+        return;
       }
 
-      // === 下面是原本的首次访问插入逻辑 ===
+      // 如果是全新的路径，则正常插入
       const record = {
         id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
         url: msg.url,
@@ -424,21 +469,24 @@ ipcMain.handle("get-records-page", (_, page, pageSize, filter) => {
   let params = [pageSize, offset];
   let countParams = [];
 
-  // 新增：处理 "pinned" 筛选逻辑
   if (filter === "pinned") {
     countSql = "SELECT COUNT(*) as total FROM records WHERE pinned = 1";
     dataSql =
       "SELECT * FROM records WHERE pinned = 1 ORDER BY timestamp DESC LIMIT ? OFFSET ?";
     countParams = [];
     params = [pageSize, offset];
-  }
-  // 保持原有的域名筛选逻辑
-  else if (filter && filter !== "all") {
-    countSql = "SELECT COUNT(*) as total FROM records WHERE matchedRule = ?";
-    dataSql =
-      "SELECT * FROM records WHERE matchedRule = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?";
-    countParams = [filter];
-    params = [filter, pageSize, offset];
+  } else if (filter && filter !== "all") {
+    // 此时传入的 filter 是归类名(Label)，找出归类下的所有域名一起查询
+    const domains = watchlist
+      .filter((w) => (w.label || w.domain) === filter)
+      .map((w) => w.domain);
+    if (domains.length > 0) {
+      const placeholders = domains.map(() => "?").join(",");
+      countSql = `SELECT COUNT(*) as total FROM records WHERE matchedRule IN (${placeholders})`;
+      dataSql = `SELECT * FROM records WHERE matchedRule IN (${placeholders}) ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+      countParams = domains;
+      params = [...domains, pageSize, offset];
+    }
   }
 
   const total = dbGet(countSql, countParams).total;
@@ -448,7 +496,6 @@ ipcMain.handle("get-records-page", (_, page, pageSize, filter) => {
 
 ipcMain.handle("get-statistics", () => {
   const total = dbGet("SELECT COUNT(*) as total FROM records").total;
-
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const today = dbGet(
@@ -459,21 +506,36 @@ ipcMain.handle("get-statistics", () => {
   const domainRows = dbAll(
     "SELECT matchedRule, COUNT(*) as count FROM records GROUP BY matchedRule ORDER BY count DESC",
   );
+
   const domainCounts = {};
   let topDomain = null;
   let topDomainCount = 0;
+
+  // 【核心】将结果按伪装归类（Label）进行合并
+  const ruleToLabel = {};
+  watchlist.forEach((w) => {
+    ruleToLabel[w.domain] = w.label || w.domain;
+  });
+
   for (const r of domainRows) {
-    domainCounts[r.matchedRule] = r.count;
-    if (!topDomain) {
-      topDomain = r.matchedRule;
-      topDomainCount = r.count;
+    const label = ruleToLabel[r.matchedRule] || r.matchedRule;
+    domainCounts[label] = (domainCounts[label] || 0) + r.count;
+  }
+
+  for (const label in domainCounts) {
+    if (!topDomain || domainCounts[label] > topDomainCount) {
+      topDomain = label;
+      topDomainCount = domainCounts[label];
     }
   }
+
+  // 独立站点数量按归类计算
+  const uniqueSites = new Set(watchlist.map((w) => w.label || w.domain)).size;
 
   return {
     total,
     today,
-    sites: watchlist.length,
+    sites: uniqueSites,
     enabled,
     domainCounts,
     topDomain,
@@ -542,6 +604,34 @@ ipcMain.handle("export-data", () => {
 });
 
 ipcMain.handle("open-url", (_, url) => {
+  try {
+    const u = new URL(url);
+    const entry = watchlist.find(
+      (w) => w.domain === u.hostname || url.includes(w.domain),
+    );
+    if (entry) {
+      const groupLabel = entry.label || entry.domain;
+      const groupDomains = watchlist
+        .filter((w) => (w.label || w.domain) === groupLabel)
+        .map((w) => w.domain);
+
+      if (groupDomains.length > 1) {
+        // 查找该伪装归类下，最近访问过的一个域名
+        const placeholders = groupDomains.map(() => "?").join(",");
+        const latestRecord = dbGet(
+          `SELECT domain FROM records WHERE matchedRule IN (${placeholders}) ORDER BY timestamp DESC LIMIT 1`,
+          groupDomains,
+        );
+
+        if (latestRecord && latestRecord.domain) {
+          u.hostname = latestRecord.domain; // 偷梁换柱，将旧域名替换为最新域名
+          return require("electron").shell.openExternal(u.toString());
+        }
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
   require("electron").shell.openExternal(url);
 });
 
