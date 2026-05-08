@@ -894,12 +894,36 @@
                                     <input
                                         type="text"
                                         id="inputLabel"
-                                        placeholder="备注"
+                                        placeholder="分组备注"
                                     />
                                     <input
                                         type="color"
                                         id="inputColor"
                                         value="#5b8dee"
+                                    />
+                                </div>
+                                <div class="af-row" style="margin-top: 8px">
+                                    <select
+                                        id="inputRegexTarget"
+                                        style="
+                                            background: var(--bg);
+                                            border: 1px solid var(--border);
+                                            color: var(--text);
+                                            border-radius: 6px;
+                                            padding: 4px 2px;
+                                            font-size: 11px;
+                                            outline: none;
+                                            cursor: pointer;
+                                        "
+                                    >
+                                        <option value="url">匹配 URL</option>
+                                        <option value="title">匹配标题</option>
+                                    </select>
+                                    <input
+                                        type="text"
+                                        id="inputRegexFilter"
+                                        placeholder="正则过滤 (可选，如 .*video.*)"
+                                        style="flex: 1"
                                     />
                                     <button class="btn-sm primary" id="btnAdd">
                                         添加

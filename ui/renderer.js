@@ -107,8 +107,18 @@ function renderWatchlist() {
     return;
   }
   var counts = (stats && stats.domainCounts) || {};
+
   container.innerHTML = watchlist
     .map(function (entry, idx) {
+      // 新增：如果有正则规则，显示一个小的 [.*] 徽章，悬停可看规则详情
+      var regexBadge = entry.regexFilter
+        ? '<span style="font-size:9px;color:var(--warning);border:1px solid var(--warning);padding:0 3px;border-radius:3px;margin-left:6px;cursor:help;opacity:0.8" title="[' +
+          (entry.regexTarget === "title" ? "Title" : "URL") +
+          "] 正则: " +
+          escapeHtml(entry.regexFilter) +
+          '">.*</span>'
+        : "";
+
       return (
         '<div class="watch-item">' +
         '<div class="wd-dot" style="background:' +
@@ -119,6 +129,7 @@ function renderWatchlist() {
         "</div>" +
         '<div class="wd-label">' +
         escapeHtml(entry.label || "") +
+        regexBadge +
         "</div>" +
         '<div class="wd-count">' +
         (counts[entry.domain] || 0) +
@@ -544,6 +555,10 @@ async function addEntry() {
   var label = document.getElementById("inputLabel").value.trim();
   var color = document.getElementById("inputColor").value;
 
+  // 新增：提取正则参数
+  var regexTarget = document.getElementById("inputRegexTarget").value;
+  var regexFilter = document.getElementById("inputRegexFilter").value.trim();
+
   if (!domain) {
     showToast("请输入域名", "error");
     return;
@@ -557,14 +572,19 @@ async function addEntry() {
     return;
   }
 
-  watchlist.push({ domain: domain, label: label, color: color });
-  await window.electronAPI.addToWatchlist({
+  var newEntry = {
     domain: domain,
     label: label,
     color: color,
-  });
+    regexFilter: regexFilter,
+    regexTarget: regexTarget,
+  };
+  watchlist.push(newEntry);
+  await window.electronAPI.addToWatchlist(newEntry);
+
   document.getElementById("inputDomain").value = "";
   document.getElementById("inputLabel").value = "";
+  document.getElementById("inputRegexFilter").value = ""; // 清空正则框
   document.getElementById("addFormInline").classList.remove("open");
   renderWatchlist();
   renderStats();

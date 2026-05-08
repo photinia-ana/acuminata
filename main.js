@@ -99,11 +99,25 @@ async function initDatabase() {
   try {
     db.run("ALTER TABLE records ADD COLUMN score INTEGER DEFAULT NULL");
   } catch (e) {}
+  // === 新增：加入创建时间和更新时间字段 ===
+  try {
+    db.run("ALTER TABLE records ADD COLUMN createdAt INTEGER DEFAULT NULL");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE records ADD COLUMN updatedAt INTEGER DEFAULT NULL");
+  } catch (e) {}
   db.run(`CREATE TABLE IF NOT EXISTS watchlist (
     domain TEXT PRIMARY KEY,
     label TEXT NOT NULL DEFAULT '',
     color TEXT NOT NULL DEFAULT '#5b8dee'
   )`);
+  // === 新增：为观察列表添加正则过滤字段 ===
+  try {
+    db.run("ALTER TABLE watchlist ADD COLUMN regexFilter TEXT DEFAULT ''");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE watchlist ADD COLUMN regexTarget TEXT DEFAULT 'url'");
+  } catch (e) {}
   db.run(`CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -198,6 +212,37 @@ function handleExtensionMessage(ws, msg) {
         ? currentWatch.label || msg.domain
         : msg.domain;
 
+      // === 新增：伪装组正则验证逻辑 ===
+      // 找出该分组下所有配置了有效正则表达式的规则
+      const groupRules = watchlist.filter(
+        (w) =>
+          (w.label || w.domain) === groupLabel &&
+          w.regexFilter &&
+          w.regexFilter.trim() !== "",
+      );
+
+      // 如果该组配置了正则，则当前访问记录必须命中其中至少一条才能放行
+      if (groupRules.length > 0) {
+        let isMatch = false;
+        for (const rule of groupRules) {
+          try {
+            // i 标志表示忽略大小写
+            const regex = new RegExp(rule.regexFilter.trim());
+            // 判断是匹配 title 还是 url
+            const targetStr =
+              rule.regexTarget === "title" ? msg.title || "" : msg.url;
+            if (regex.test(targetStr)) {
+              isMatch = true;
+              break;
+            }
+          } catch (e) {
+            console.error("Invalid Regex:", rule.regexFilter); // 忽略不合法的正则
+          }
+        }
+        // 如果没有命中任何一条规则，直接丢弃该记录，不作保存
+        if (!isMatch) return;
+      }
+
       // 2. 找出同属一个"伪装归类"的所有域名
       const groupDomains = watchlist
         .filter((w) => (w.label || w.domain) === groupLabel)
@@ -237,16 +282,36 @@ function handleExtensionMessage(ws, msg) {
       }
 
       if (existing) {
-        // [防刷分] 同一标签页60秒内频繁刷新忽略
+        // 防手抖：同一标签页60秒内频繁刷新忽略
         if (msg.tabId === existing.tabId && now - existing.timestamp < 60000)
           return;
 
-        let newPinned = 1;
-        let newScore = existing.pinned ? (existing.score || 0) + 1 : 1;
+        // === 核心：每日限频 +Pin 逻辑 ===
+        const todayStr = new Date(now).toDateString();
+        // 兼容旧数据：如果没有 createdAt，就用旧的 timestamp
+        const createdAt = existing.createdAt || existing.timestamp;
+        const isCreatedToday = new Date(createdAt).toDateString() === todayStr;
+        const isUpdatedToday = existing.updatedAt
+          ? new Date(existing.updatedAt).toDateString() === todayStr
+          : false;
 
-        // 【核心】将旧记录的 URL、domain 更新为当前最新的伪装域名！
+        let newPinned = 1;
+        let newScore = existing.score || 0;
+        let newUpdatedAt = existing.updatedAt;
+
+        if (!existing.pinned) {
+          // 情况A：以前没被 Pin 过。今天是第一次复访，直接 Pin 并给 1 分。
+          newScore = 1;
+          newUpdatedAt = now;
+        } else if (!isCreatedToday && !isUpdatedToday) {
+          // 情况B：不是今天创建的，且今天也没加过分。允许 +1 分。
+          newScore += 1;
+          newUpdatedAt = now;
+        }
+
+        // 更新数据库（即使不加分，依然把 timestamp 更新为 now，让它排到列表最前面）
         dbRun(
-          "UPDATE records SET url = ?, domain = ?, matchedRule = ?, pinned = ?, score = ?, timestamp = ? WHERE id = ?",
+          "UPDATE records SET url = ?, domain = ?, matchedRule = ?, pinned = ?, score = ?, timestamp = ?, updatedAt = ? WHERE id = ?",
           [
             msg.url,
             msg.domain,
@@ -254,6 +319,7 @@ function handleExtensionMessage(ws, msg) {
             newPinned,
             newScore,
             now,
+            newUpdatedAt,
             existing.id,
           ],
         );
@@ -264,11 +330,12 @@ function handleExtensionMessage(ws, msg) {
         existing.pinned = newPinned;
         existing.score = newScore;
         existing.timestamp = now;
+        existing.updatedAt = newUpdatedAt;
         broadcastToExtensions({ type: "recordUpdated", record: existing });
         return;
       }
 
-      // 如果是全新的路径，则正常插入
+      // === 全新访问插入逻辑 (新增 createdAt, updatedAt) ===
       const record = {
         id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
         url: msg.url,
@@ -279,7 +346,7 @@ function handleExtensionMessage(ws, msg) {
         timestamp: now,
       };
       dbRun(
-        "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL)",
+        "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL)",
         [
           record.id,
           record.url,
@@ -288,6 +355,7 @@ function handleExtensionMessage(ws, msg) {
           record.matchedRule,
           record.tabId,
           record.timestamp,
+          now,
         ],
       );
       broadcastToExtensions({ type: "recordAdded", record });
@@ -309,10 +377,16 @@ function handleExtensionMessage(ws, msg) {
       watchlist = msg.watchlist;
       dbRun("DELETE FROM watchlist");
       const stmt = db.prepare(
-        "INSERT INTO watchlist (domain, label, color) VALUES (?, ?, ?)",
+        "INSERT INTO watchlist (domain, label, color, regexFilter, regexTarget) VALUES (?, ?, ?, ?, ?)",
       );
       for (const entry of watchlist) {
-        stmt.bind([entry.domain, entry.label, entry.color]);
+        stmt.bind([
+          entry.domain,
+          entry.label,
+          entry.color,
+          entry.regexFilter || "",
+          entry.regexTarget || "url",
+        ]);
         stmt.step();
         stmt.reset();
       }
@@ -561,12 +635,19 @@ ipcMain.handle("get-stats", () => {
 
 ipcMain.handle("add-watchlist", (_, entry) => {
   if (!watchlist.find((e) => e.domain === entry.domain)) {
+    entry.regexFilter = entry.regexFilter || "";
+    entry.regexTarget = entry.regexTarget || "url";
     watchlist.push(entry);
-    dbRun("INSERT INTO watchlist (domain, label, color) VALUES (?, ?, ?)", [
-      entry.domain,
-      entry.label,
-      entry.color,
-    ]);
+    dbRun(
+      "INSERT INTO watchlist (domain, label, color, regexFilter, regexTarget) VALUES (?, ?, ?, ?, ?)",
+      [
+        entry.domain,
+        entry.label,
+        entry.color,
+        entry.regexFilter,
+        entry.regexTarget,
+      ],
+    );
     broadcastToExtensions({ type: "watchlistUpdated", watchlist });
     return true;
   }
@@ -648,11 +729,11 @@ ipcMain.handle("open-url", (_, url) => {
 });
 
 ipcMain.handle("toggle-record-pin", (_, id, pinned, score) => {
-  dbRun("UPDATE records SET pinned = ?, score = ? WHERE id = ?", [
-    pinned ? 1 : 0,
-    score,
-    id,
-  ]);
+  // 手动操作也记录为今天已更新，防止后续自动复访重复加分
+  dbRun(
+    "UPDATE records SET pinned = ?, score = ?, updatedAt = ? WHERE id = ?",
+    [pinned ? 1 : 0, score, Date.now(), id],
+  );
   const record = dbGet("SELECT * FROM records WHERE id = ?", [id]);
   if (record) {
     broadcastToExtensions({ type: "recordUpdated", record });
