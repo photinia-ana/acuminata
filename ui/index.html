@@ -1,664 +1,870 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src ws://127.0.0.1:8766 ws://localhost:8766">
-  <title>Site History Tracker</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #0b0d12;
-      --surface: #13161e;
-      --surface2: #1b1f2b;
-      --border: #252a38;
-      --border2: #2e3345;
-      --accent: #5b8dee;
-      --accent2: #e85d8a;
-      --text: #e4e8f5;
-      --text2: #7a80a0;
-      --text3: #4a5070;
-      --success: #52c97a;
-      --danger: #e85d5d;
-      --warning: #f0a040;
-      --mono: 'JetBrains Mono', monospace;
-      --sans: 'Noto Sans SC', sans-serif;
-    }
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src ws://127.0.0.1:8766 ws://localhost:8766"
+        />
+        <title>Site History Tracker</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --bg: #0b0d12;
+                --surface: #13161e;
+                --surface2: #1b1f2b;
+                --border: #252a38;
+                --border2: #2e3345;
+                --accent: #5b8dee;
+                --accent2: #e85d8a;
+                --text: #e4e8f5;
+                --text2: #7a80a0;
+                --text3: #4a5070;
+                --success: #52c97a;
+                --danger: #e85d5d;
+                --warning: #f0a040;
+                --mono: "JetBrains Mono", monospace;
+                --sans: "Noto Sans SC", sans-serif;
+            }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--sans);
-      font-size: 13px;
-      line-height: 1.5;
-      overflow: hidden;
-      height: 100vh;
-      user-select: none;
-    }
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family: var(--sans);
+                font-size: 13px;
+                line-height: 1.5;
+                overflow: hidden;
+                height: 100vh;
+                user-select: none;
+            }
 
-    .app {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
+            .app {
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+            }
 
-    /* ── header ── */
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
-      background: var(--surface);
-      flex-shrink: 0;
-      -webkit-app-region: drag;
-    }
+            /* ── header ── */
+            header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 12px 20px;
+                border-bottom: 1px solid var(--border);
+                background: var(--surface);
+                flex-shrink: 0;
+                -webkit-app-region: drag;
+            }
 
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      -webkit-app-region: no-drag;
-    }
-    .logo-icon {
-      width: 36px; height: 36px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-    }
-    .logo h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
-    .logo .ver {
-      font-size: 10px; color: var(--text3);
-      font-family: var(--mono);
-      margin-left: 6px;
-    }
+            .logo {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                -webkit-app-region: no-drag;
+            }
+            .logo-icon {
+                width: 36px;
+                height: 36px;
+                background: linear-gradient(
+                    135deg,
+                    var(--accent),
+                    var(--accent2)
+                );
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 18px;
+            }
+            .logo h1 {
+                font-size: 15px;
+                font-weight: 700;
+                letter-spacing: -0.2px;
+            }
+            .logo .ver {
+                font-size: 10px;
+                color: var(--text3);
+                font-family: var(--mono);
+                margin-left: 6px;
+            }
 
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      -webkit-app-region: no-drag;
-    }
+            .header-right {
+                display: flex;
+                align-items: center;
+                gap: 18px;
+                -webkit-app-region: no-drag;
+            }
 
-    .ws-status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      font-family: var(--mono);
-      color: var(--text3);
-    }
-    .ws-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--text3);
-      transition: background 0.3s;
-    }
-    .ws-dot.on { background: var(--success); box-shadow: 0 0 5px var(--success); }
-    .ws-dot.off { background: var(--danger); }
+            .ws-status {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11px;
+                font-family: var(--mono);
+                color: var(--text3);
+            }
+            .ws-dot {
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: var(--text3);
+                transition: background 0.3s;
+            }
+            .ws-dot.on {
+                background: var(--success);
+                box-shadow: 0 0 5px var(--success);
+            }
+            .ws-dot.off {
+                background: var(--danger);
+            }
 
-    .toggle-wrap {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--text2);
-    }
-    .tgl {
-      position: relative;
-      width: 38px; height: 22px;
-    }
-    .tgl input { opacity: 0; width: 0; height: 0; }
-    .tgl-slider {
-      position: absolute; inset: 0;
-      background: var(--border);
-      border-radius: 22px;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-    .tgl-slider::before {
-      content: '';
-      position: absolute;
-      width: 16px; height: 16px;
-      left: 3px; top: 3px;
-      background: #fff;
-      border-radius: 50%;
-      transition: 0.2s;
-    }
-    .tgl input:checked + .tgl-slider { background: var(--accent); }
-    .tgl input:checked + .tgl-slider::before { transform: translateX(16px); }
+            .toggle-wrap {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                color: var(--text2);
+            }
+            .tgl {
+                position: relative;
+                width: 38px;
+                height: 22px;
+            }
+            .tgl input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+            .tgl-slider {
+                position: absolute;
+                inset: 0;
+                background: var(--border);
+                border-radius: 22px;
+                cursor: pointer;
+                transition: 0.2s;
+            }
+            .tgl-slider::before {
+                content: "";
+                position: absolute;
+                width: 16px;
+                height: 16px;
+                left: 3px;
+                top: 3px;
+                background: #fff;
+                border-radius: 50%;
+                transition: 0.2s;
+            }
+            .tgl input:checked + .tgl-slider {
+                background: var(--accent);
+            }
+            .tgl input:checked + .tgl-slider::before {
+                transform: translateX(16px);
+            }
 
-    /* ── main grid ── */
-    .main-grid {
-      display: grid;
-      grid-template-columns: 1fr 320px;
-      flex: 1;
-      overflow: hidden;
-    }
+            /* ── main grid ── */
+            .main-grid {
+                display: grid;
+                grid-template-columns: 1fr 320px;
+                flex: 1;
+                overflow: hidden;
+            }
 
-    /* ── records panel (left) ── */
-    .records-panel {
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      border-right: 1px solid var(--border);
-    }
-    .panel-top {
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      gap: 10px;
-      flex-shrink: 0;
-    }
-    .search-box {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0 12px;
-      transition: border-color 0.2s;
-    }
-    .search-box:focus-within { border-color: var(--accent); }
-    .search-box input {
-      flex: 1;
-      background: none;
-      border: none;
-      outline: none;
-      color: var(--text);
-      font-size: 12px;
-      font-family: var(--sans);
-      padding: 7px 0;
-    }
-    .search-box input::placeholder { color: var(--text3); }
-    .search-icon { color: var(--text3); font-size: 14px; }
-    .search-clear {
-      background: none; border: none;
-      color: var(--text3); cursor: pointer;
-      font-size: 16px; padding: 0 2px;
-      display: none;
-    }
-    .search-clear.visible { display: block; }
-    .search-clear:hover { color: var(--text2); }
+            /* ── records panel (left) ── */
+            .records-panel {
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                border-right: 1px solid var(--border);
+            }
+            .panel-top {
+                padding: 12px 16px;
+                border-bottom: 1px solid var(--border);
+                display: flex;
+                gap: 10px;
+                flex-shrink: 0;
+            }
+            .search-box {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 0 12px;
+                transition: border-color 0.2s;
+            }
+            .search-box:focus-within {
+                border-color: var(--accent);
+            }
+            .search-box input {
+                flex: 1;
+                background: none;
+                border: none;
+                outline: none;
+                color: var(--text);
+                font-size: 12px;
+                font-family: var(--sans);
+                padding: 7px 0;
+            }
+            .search-box input::placeholder {
+                color: var(--text3);
+            }
+            .search-icon {
+                color: var(--text3);
+                font-size: 14px;
+            }
+            .search-clear {
+                background: none;
+                border: none;
+                color: var(--text3);
+                cursor: pointer;
+                font-size: 16px;
+                padding: 0 2px;
+                display: none;
+            }
+            .search-clear.visible {
+                display: block;
+            }
+            .search-clear:hover {
+                color: var(--text2);
+            }
 
-    .filter-bar {
-      padding: 8px 16px;
-      display: flex;
-      gap: 6px;
-      flex-shrink: 0;
-      overflow-x: auto;
-    }
-    .filter-bar::-webkit-scrollbar { height: 0; }
-    .filter-chip {
-      padding: 4px 12px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      font-size: 11px;
-      cursor: pointer;
-      white-space: nowrap;
-      font-family: var(--mono);
-      color: var(--text2);
-      transition: all 0.15s;
-      flex-shrink: 0;
-      background: var(--surface);
-    }
-    .filter-chip:hover { border-color: var(--accent); }
-    .filter-chip.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-    }
+            .filter-bar {
+                padding: 8px 16px;
+                display: flex;
+                gap: 6px;
+                flex-shrink: 0;
+                overflow-x: auto;
+            }
+            .filter-bar::-webkit-scrollbar {
+                height: 0;
+            }
+            .filter-chip {
+                padding: 4px 12px;
+                border-radius: 16px;
+                border: 1px solid var(--border);
+                font-size: 11px;
+                cursor: pointer;
+                white-space: nowrap;
+                font-family: var(--mono);
+                color: var(--text2);
+                transition: all 0.15s;
+                flex-shrink: 0;
+                background: var(--surface);
+            }
+            .filter-chip:hover {
+                border-color: var(--accent);
+            }
+            .filter-chip.active {
+                background: var(--accent);
+                border-color: var(--accent);
+                color: #fff;
+            }
 
-    .records-scroll {
-      flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-    }
-    .records-scroll::-webkit-scrollbar { width: 5px; }
-    .records-scroll::-webkit-scrollbar-track { background: transparent; }
-    .records-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+            .records-scroll {
+                flex: 1;
+                overflow-y: auto;
+                overflow-x: hidden;
+            }
+            .records-scroll::-webkit-scrollbar {
+                width: 5px;
+            }
+            .records-scroll::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .records-scroll::-webkit-scrollbar-thumb {
+                background: var(--border2);
+                border-radius: 3px;
+            }
 
-    .date-header {
-      padding: 10px 16px 6px;
-      font-size: 11px;
-      font-family: var(--mono);
-      color: var(--text3);
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      border-bottom: 1px solid var(--border);
-      position: sticky;
-      top: 0;
-      background: var(--bg);
-      z-index: 1;
-    }
+            .date-header {
+                padding: 10px 16px 6px;
+                font-size: 11px;
+                font-family: var(--mono);
+                color: var(--text3);
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                border-bottom: 1px solid var(--border);
+                position: sticky;
+                top: 0;
+                background: var(--bg);
+                z-index: 1;
+            }
 
-    .record-item {
-      padding: 10px 16px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      cursor: pointer;
-      transition: background 0.1s;
-      border-bottom: 1px solid rgba(42,47,66,0.4);
-    }
-    .record-item:hover { background: var(--surface); }
-    .record-item .rec-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .record-item .rec-body { flex: 1; min-width: 0; }
-    .record-item .rec-title {
-      font-size: 13px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .record-item .rec-meta {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 2px;
-    }
-    .record-item .rec-domain {
-      font-size: 10px;
-      font-family: var(--mono);
-      padding: 1px 6px;
-      border-radius: 3px;
-      background: var(--surface2);
-    }
-    .record-item .rec-time {
-      font-size: 10px;
-      color: var(--text3);
-      font-family: var(--mono);
-    }
+            .record-item {
+                padding: 10px 16px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                cursor: pointer;
+                transition: background 0.1s;
+                border-bottom: 1px solid rgba(42, 47, 66, 0.4);
+            }
+            .record-item:hover {
+                background: var(--surface);
+            }
+            .record-item .rec-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+            .record-item .rec-body {
+                flex: 1;
+                min-width: 0;
+            }
+            .record-item .rec-title {
+                font-size: 13px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .record-item .rec-meta {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-top: 2px;
+            }
+            .record-item .rec-domain {
+                font-size: 10px;
+                font-family: var(--mono);
+                padding: 1px 6px;
+                border-radius: 3px;
+                background: var(--surface2);
+            }
+            .record-item .rec-time {
+                font-size: 10px;
+                color: var(--text3);
+                font-family: var(--mono);
+            }
 
-    .load-more-bar {
-      padding: 10px;
-      text-align: center;
-    }
-    .load-more-bar button {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text2);
-      padding: 6px 20px;
-      border-radius: 8px;
-      font-size: 11px;
-      font-family: var(--mono);
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .load-more-bar button:hover { border-color: var(--accent); color: var(--accent); }
+            .load-more-bar {
+                padding: 10px;
+                text-align: center;
+            }
+            .load-more-bar button {
+                background: var(--surface);
+                border: 1px solid var(--border);
+                color: var(--text2);
+                padding: 6px 20px;
+                border-radius: 8px;
+                font-size: 11px;
+                font-family: var(--mono);
+                cursor: pointer;
+                transition: all 0.15s;
+            }
+            .load-more-bar button:hover {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
 
-    .empty-records {
-      padding: 48px 20px;
-      text-align: center;
-      color: var(--text3);
-    }
-    .empty-records .empty-icon { font-size: 40px; margin-bottom: 10px; opacity: 0.5; }
-    .empty-records .empty-text { font-size: 13px; }
+            .empty-records {
+                padding: 48px 20px;
+                text-align: center;
+                color: var(--text3);
+            }
+            .empty-records .empty-icon {
+                font-size: 40px;
+                margin-bottom: 10px;
+                opacity: 0.5;
+            }
+            .empty-records .empty-text {
+                font-size: 13px;
+            }
 
-    /* ── sidebar (right) ── */
-    .sidebar {
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;
-      gap: 0;
-    }
-    .sidebar::-webkit-scrollbar { width: 5px; }
-    .sidebar::-webkit-scrollbar-track { background: transparent; }
-    .sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+            /* ── 文字版 Pin 按钮 ── */
+            .btn-text-pin {
+                background: transparent;
+                border: 1px solid var(--border);
+                color: var(--text2);
+                padding: 4px 12px;
+                border-radius: 6px;
+                font-size: 11px;
+                font-family: var(--mono);
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.15s;
+                flex-shrink: 0; /* 保证按钮在右侧不会被挤压 */
+            }
+            .btn-text-pin:hover {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+            .btn-text-pin.on {
+                background: rgba(240, 160, 64, 0.1);
+                border-color: var(--warning);
+                color: var(--warning);
+            }
 
-    .stats-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      padding: 12px;
-    }
-    .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 14px;
-    }
-    .stat-card .val {
-      font-family: var(--mono);
-      font-size: 22px;
-      font-weight: 600;
-      color: var(--accent);
-      line-height: 1.1;
-      margin-bottom: 3px;
-    }
-    .stat-card .lbl {
-      font-size: 11px;
-      color: var(--text3);
-    }
+            /* ── sidebar (right) ── */
+            .sidebar {
+                display: flex;
+                flex-direction: column;
+                overflow-y: auto;
+                gap: 0;
+            }
+            .sidebar::-webkit-scrollbar {
+                width: 5px;
+            }
+            .sidebar::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .sidebar::-webkit-scrollbar-thumb {
+                background: var(--border2);
+                border-radius: 3px;
+            }
 
-    .sidebar-section {
-      border-top: 1px solid var(--border);
-    }
-    .sect-hdr {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 14px;
-      cursor: pointer;
-      font-size: 11px;
-      font-family: var(--mono);
-      color: var(--text2);
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      user-select: none;
-    }
-    .sect-hdr:hover { color: var(--text); }
-    .sect-hdr .arrow {
-      transition: transform 0.2s;
-      font-size: 10px;
-    }
-    .sect-hdr.collapsed .arrow { transform: rotate(-90deg); }
-    .sect-body { overflow: hidden; }
+            .stats-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+                padding: 12px;
+            }
+            .stat-card {
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 12px 14px;
+            }
+            .stat-card .val {
+                font-family: var(--mono);
+                font-size: 22px;
+                font-weight: 600;
+                color: var(--accent);
+                line-height: 1.1;
+                margin-bottom: 3px;
+            }
+            .stat-card .lbl {
+                font-size: 11px;
+                color: var(--text3);
+            }
 
-    .watchlist-items { padding: 0 12px 8px; }
-    .watch-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      transition: background 0.1s;
-      font-size: 12px;
-    }
-    .watch-item:hover { background: var(--surface); }
-    .watch-item .wd-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .watch-item .wd-domain {
-      font-family: var(--mono);
-      font-weight: 600;
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .watch-item .wd-label {
-      font-size: 10px;
-      color: var(--text3);
-      background: var(--surface2);
-      padding: 2px 6px;
-      border-radius: 4px;
-      flex-shrink: 0;
-    }
-    .watch-item .wd-count {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--accent);
-      flex-shrink: 0;
-      min-width: 36px;
-      text-align: right;
-    }
-    .watch-item .wd-remove {
-      background: none;
-      border: none;
-      color: var(--text3);
-      cursor: pointer;
-      font-size: 14px;
-      padding: 2px;
-      line-height: 1;
-      flex-shrink: 0;
-    }
-    .watch-item .wd-remove:hover { color: var(--danger); }
+            .sidebar-section {
+                border-top: 1px solid var(--border);
+            }
+            .sect-hdr {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 14px;
+                cursor: pointer;
+                font-size: 11px;
+                font-family: var(--mono);
+                color: var(--text2);
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                user-select: none;
+            }
+            .sect-hdr:hover {
+                color: var(--text);
+            }
+            .sect-hdr .arrow {
+                transition: transform 0.2s;
+                font-size: 10px;
+            }
+            .sect-hdr.collapsed .arrow {
+                transform: rotate(-90deg);
+            }
+            .sect-body {
+                overflow: hidden;
+            }
 
-    /* ── record pin/score ── */
-    .rec-pin {
-      cursor: pointer;
-      font-size: 14px;
-      color: var(--text3);
-      flex-shrink: 0;
-      user-select: none;
-      margin-right: 2px;
-    }
-    .rec-pin.on { color: var(--warning); }
-    .rec-score {
-      display: flex;
-      align-items: center;
-      gap: 1px;
-      flex-shrink: 0;
-      background: var(--surface2);
-      border-radius: 5px;
-      padding: 0 2px;
-    }
-    .rec-sc-btn {
-      background: none;
-      border: none;
-      color: var(--text3);
-      cursor: pointer;
-      font-size: 12px;
-      font-family: var(--mono);
-      padding: 1px 4px;
-      line-height: 1;
-    }
-    .rec-sc-btn:hover { color: var(--text); }
-    .rec-sc-val {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--warning);
-      min-width: 20px;
-      text-align: center;
-    }
+            .watchlist-items {
+                padding: 0 12px 8px;
+            }
+            .watch-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 10px;
+                border-radius: 8px;
+                transition: background 0.1s;
+                font-size: 12px;
+            }
+            .watch-item:hover {
+                background: var(--surface);
+            }
+            .watch-item .wd-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+            .watch-item .wd-domain {
+                font-family: var(--mono);
+                font-weight: 600;
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .watch-item .wd-label {
+                font-size: 10px;
+                color: var(--text3);
+                background: var(--surface2);
+                padding: 2px 6px;
+                border-radius: 4px;
+                flex-shrink: 0;
+            }
+            .watch-item .wd-count {
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--accent);
+                flex-shrink: 0;
+                min-width: 36px;
+                text-align: right;
+            }
+            .watch-item .wd-remove {
+                background: none;
+                border: none;
+                color: var(--text3);
+                cursor: pointer;
+                font-size: 14px;
+                padding: 2px;
+                line-height: 1;
+                flex-shrink: 0;
+            }
+            .watch-item .wd-remove:hover {
+                color: var(--danger);
+            }
 
-    .empty-watchlist {
-      text-align: center;
-      padding: 16px;
-      color: var(--text3);
-      font-size: 12px;
-    }
+            /* ── record pin/score ── */
+            .rec-pin {
+                cursor: pointer;
+                font-size: 14px;
+                color: var(--text3);
+                flex-shrink: 0;
+                user-select: none;
+                margin-right: 2px;
+            }
+            .rec-pin.on {
+                color: var(--warning);
+            }
+            .rec-score {
+                display: flex;
+                align-items: center;
+                gap: 1px;
+                flex-shrink: 0;
+                background: var(--surface2);
+                border-radius: 5px;
+                padding: 0 2px;
+            }
+            .rec-sc-btn {
+                background: none;
+                border: none;
+                color: var(--text3);
+                cursor: pointer;
+                font-size: 12px;
+                font-family: var(--mono);
+                padding: 1px 4px;
+                line-height: 1;
+            }
+            .rec-sc-btn:hover {
+                color: var(--text);
+            }
+            .rec-sc-val {
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--warning);
+                min-width: 20px;
+                text-align: center;
+            }
 
-    .add-form-inline {
-      padding: 8px 14px;
-      display: none;
-    }
-    .add-form-inline.open { display: block; }
-    .add-form-inline .af-row {
-      display: flex;
-      gap: 6px;
-      align-items: end;
-    }
-    .add-form-inline input[type="text"] {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 6px 8px;
-      color: var(--text);
-      font-family: var(--mono);
-      font-size: 11px;
-      outline: none;
-      min-width: 0;
-    }
-    .add-form-inline input[type="text"]:focus { border-color: var(--accent); }
-    .add-form-inline input[type="color"] {
-      width: 32px; height: 28px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: var(--bg);
-      cursor: pointer;
-      padding: 2px;
-    }
-    .btn-sm {
-      padding: 6px 12px;
-      border-radius: 6px;
-      border: none;
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 600;
-      font-family: var(--sans);
-      white-space: nowrap;
-    }
-    .btn-sm.primary { background: var(--accent); color: #fff; }
-    .btn-sm.primary:hover { background: #7aa5f5; }
-    .btn-sm.ghost {
-      background: transparent;
-      color: var(--text2);
-      border: 1px solid var(--border);
-    }
-    .btn-sm.ghost:hover { border-color: var(--accent); color: var(--accent); }
+            .empty-watchlist {
+                text-align: center;
+                padding: 16px;
+                color: var(--text3);
+                font-size: 12px;
+            }
 
-    .sidebar-actions {
-      padding: 12px;
-      display: flex;
-      gap: 8px;
-      border-top: 1px solid var(--border);
-      margin-top: auto;
-    }
-    .btn-act {
-      flex: 1;
-      padding: 8px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text2);
-      font-size: 12px;
-      cursor: pointer;
-      font-family: var(--sans);
-      transition: all 0.15s;
-      text-align: center;
-    }
-    .btn-act.export { color: var(--success); border-color: rgba(82,201,122,0.3); }
-    .btn-act.export:hover { background: var(--success); color: var(--bg); }
-    .btn-act.clear { color: var(--danger); border-color: rgba(232,93,93,0.3); }
-    .btn-act.clear:hover { background: var(--danger); color: #fff; }
+            .add-form-inline {
+                padding: 8px 14px;
+                display: none;
+            }
+            .add-form-inline.open {
+                display: block;
+            }
+            .add-form-inline .af-row {
+                display: flex;
+                gap: 6px;
+                align-items: end;
+            }
+            .add-form-inline input[type="text"] {
+                flex: 1;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 6px 8px;
+                color: var(--text);
+                font-family: var(--mono);
+                font-size: 11px;
+                outline: none;
+                min-width: 0;
+            }
+            .add-form-inline input[type="text"]:focus {
+                border-color: var(--accent);
+            }
+            .add-form-inline input[type="color"] {
+                width: 32px;
+                height: 28px;
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                background: var(--bg);
+                cursor: pointer;
+                padding: 2px;
+            }
+            .btn-sm {
+                padding: 6px 12px;
+                border-radius: 6px;
+                border: none;
+                cursor: pointer;
+                font-size: 11px;
+                font-weight: 600;
+                font-family: var(--sans);
+                white-space: nowrap;
+            }
+            .btn-sm.primary {
+                background: var(--accent);
+                color: #fff;
+            }
+            .btn-sm.primary:hover {
+                background: #7aa5f5;
+            }
+            .btn-sm.ghost {
+                background: transparent;
+                color: var(--text2);
+                border: 1px solid var(--border);
+            }
+            .btn-sm.ghost:hover {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
 
-    /* ── toast ── */
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transform: translateY(80px);
-      opacity: 0;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-      z-index: 999;
-      pointer-events: none;
-    }
-    .toast.show { transform: translateY(0); opacity: 1; }
-    .toast.success { border-color: var(--success); color: var(--success); }
-    .toast.error { border-color: var(--danger); color: var(--danger); }
-  </style>
-</head>
-<body>
-<div class="app">
-  <header>
-    <div class="logo">
-      <div class="logo-icon">📡</div>
-      <h1>Site History Tracker</h1>
-    </div>
-    <div class="header-right">
-      <div class="ws-status">
-        <div class="ws-dot" id="wsDot"></div>
-        <span id="wsStatusText">未连接</span>
-      </div>
-      <div class="toggle-wrap">
-        <span id="toggleLabel">追踪中</span>
-        <label class="tgl">
-          <input type="checkbox" id="enabledToggle" checked>
-          <span class="tgl-slider"></span>
-        </label>
-      </div>
-    </div>
-  </header>
+            .sidebar-actions {
+                padding: 12px;
+                display: flex;
+                gap: 8px;
+                border-top: 1px solid var(--border);
+                margin-top: auto;
+            }
+            .btn-act {
+                flex: 1;
+                padding: 8px;
+                border-radius: 8px;
+                border: 1px solid var(--border);
+                background: var(--surface);
+                color: var(--text2);
+                font-size: 12px;
+                cursor: pointer;
+                font-family: var(--sans);
+                transition: all 0.15s;
+                text-align: center;
+            }
+            .btn-act.export {
+                color: var(--success);
+                border-color: rgba(82, 201, 122, 0.3);
+            }
+            .btn-act.export:hover {
+                background: var(--success);
+                color: var(--bg);
+            }
+            .btn-act.clear {
+                color: var(--danger);
+                border-color: rgba(232, 93, 93, 0.3);
+            }
+            .btn-act.clear:hover {
+                background: var(--danger);
+                color: #fff;
+            }
 
-  <div class="main-grid">
-    <!-- Records Panel -->
-    <div class="records-panel">
-      <div class="panel-top">
-        <div class="search-box">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="searchInput" placeholder="搜索标题或域名...">
-          <button class="search-clear" id="searchClear">✕</button>
-        </div>
-      </div>
-      <div class="filter-bar" id="filterBar">
-        <div class="filter-chip active" data-domain="all">全部</div>
-      </div>
-      <div class="records-scroll" id="recordsScroll">
-        <div id="recordsContainer"></div>
-      </div>
-    </div>
+            /* ── toast ── */
+            .toast {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: var(--surface2);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 10px 16px;
+                font-size: 12px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                transform: translateY(80px);
+                opacity: 0;
+                transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+                z-index: 999;
+                pointer-events: none;
+            }
+            .toast.show {
+                transform: translateY(0);
+                opacity: 1;
+            }
+            .toast.success {
+                border-color: var(--success);
+                color: var(--success);
+            }
+            .toast.error {
+                border-color: var(--danger);
+                color: var(--danger);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app">
+            <header>
+                <div class="logo">
+                    <div class="logo-icon">📡</div>
+                    <h1>Site History Tracker</h1>
+                </div>
+                <div class="header-right">
+                    <div class="ws-status">
+                        <div class="ws-dot" id="wsDot"></div>
+                        <span id="wsStatusText">未连接</span>
+                    </div>
+                    <div class="toggle-wrap">
+                        <span id="toggleLabel">追踪中</span>
+                        <label class="tgl">
+                            <input type="checkbox" id="enabledToggle" checked />
+                            <span class="tgl-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </header>
 
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="val" id="statTotal">0</div>
-          <div class="lbl">总记录数</div>
-        </div>
-        <div class="stat-card">
-          <div class="val" id="statToday">0</div>
-          <div class="lbl">今日记录</div>
-        </div>
-        <div class="stat-card">
-          <div class="val" id="statSites">0</div>
-          <div class="lbl">追踪站点</div>
-        </div>
-        <div class="stat-card">
-          <div class="val" id="statTopSite" style="font-size:15px">-</div>
-          <div class="lbl" id="statTopSiteLabel">最多访问</div>
-        </div>
-      </div>
+            <div class="main-grid">
+                <!-- Records Panel -->
+                <div class="records-panel">
+                    <div class="panel-top">
+                        <div class="search-box">
+                            <span class="search-icon">🔍</span>
+                            <input
+                                type="text"
+                                id="searchInput"
+                                placeholder="搜索标题或域名..."
+                            />
+                            <button class="search-clear" id="searchClear">
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+                    <div class="filter-bar" id="filterBar">
+                        <div class="filter-chip active" data-domain="all">
+                            全部
+                        </div>
+                    </div>
+                    <div class="records-scroll" id="recordsScroll">
+                        <div id="recordsContainer"></div>
+                    </div>
+                </div>
 
-      <div class="sidebar-section">
-        <div class="sect-hdr" id="watchlistToggle">
-          <span>追踪站点</span>
-          <span style="display:flex;align-items:center;gap:8px;">
-            <button class="btn-sm ghost" id="btnToggleAdd" style="font-size:10px;padding:3px 8px;">+</button>
-            <span class="arrow">▼</span>
-          </span>
-        </div>
-        <div class="sect-body" id="watchlistBody">
-          <div class="add-form-inline" id="addFormInline">
-            <div class="af-row">
-              <input type="text" id="inputDomain" placeholder="bilibili.com" style="flex:1.5">
-              <input type="text" id="inputLabel" placeholder="备注">
-              <input type="color" id="inputColor" value="#5b8dee">
-              <button class="btn-sm primary" id="btnAdd">添加</button>
+                <!-- Sidebar -->
+                <aside class="sidebar">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="val" id="statTotal">0</div>
+                            <div class="lbl">总记录数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="val" id="statToday">0</div>
+                            <div class="lbl">今日记录</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="val" id="statSites">0</div>
+                            <div class="lbl">追踪站点</div>
+                        </div>
+                        <div class="stat-card">
+                            <div
+                                class="val"
+                                id="statTopSite"
+                                style="font-size: 15px"
+                            >
+                                -
+                            </div>
+                            <div class="lbl" id="statTopSiteLabel">
+                                最多访问
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sidebar-section">
+                        <div class="sect-hdr" id="watchlistToggle">
+                            <span>追踪站点</span>
+                            <span
+                                style="
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 8px;
+                                "
+                            >
+                                <button
+                                    class="btn-sm ghost"
+                                    id="btnToggleAdd"
+                                    style="font-size: 10px; padding: 3px 8px"
+                                >
+                                    +
+                                </button>
+                                <span class="arrow">▼</span>
+                            </span>
+                        </div>
+                        <div class="sect-body" id="watchlistBody">
+                            <div class="add-form-inline" id="addFormInline">
+                                <div class="af-row">
+                                    <input
+                                        type="text"
+                                        id="inputDomain"
+                                        placeholder="bilibili.com"
+                                        style="flex: 1.5"
+                                    />
+                                    <input
+                                        type="text"
+                                        id="inputLabel"
+                                        placeholder="备注"
+                                    />
+                                    <input
+                                        type="color"
+                                        id="inputColor"
+                                        value="#5b8dee"
+                                    />
+                                    <button class="btn-sm primary" id="btnAdd">
+                                        添加
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="watchlist-items" id="watchlist">
+                                <div class="empty-watchlist">暂无追踪站点</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sidebar-actions">
+                        <button class="btn-act export" id="btnExport">
+                            ⬇ 导出 JSON
+                        </button>
+                        <button class="btn-act clear" id="btnClear">
+                            🗑 清空记录
+                        </button>
+                    </div>
+                </aside>
             </div>
-          </div>
-          <div class="watchlist-items" id="watchlist">
-            <div class="empty-watchlist">暂无追踪站点</div>
-          </div>
         </div>
-      </div>
 
-      <div class="sidebar-actions">
-        <button class="btn-act export" id="btnExport">⬇ 导出 JSON</button>
-        <button class="btn-act clear" id="btnClear">🗑 清空记录</button>
-      </div>
-    </aside>
-  </div>
-</div>
+        <div class="toast" id="toast"></div>
 
-<div class="toast" id="toast"></div>
-
-<script src="renderer.js"></script>
-</body>
+        <script src="renderer.js"></script>
+    </body>
 </html>

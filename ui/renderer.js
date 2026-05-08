@@ -195,13 +195,13 @@ function renderRecords() {
       var pinned = r.pinned ? 1 : 0;
       var score = r.score ?? null;
       var pinBtn =
-        '<span class="rec-pin' +
+        '<button class="btn-text-pin' +
         (pinned ? " on" : "") +
         '" data-action="rec-pin" data-id="' +
         r.id +
         '">' +
-        (pinned ? "★" : "☆") +
-        "</span>";
+        (pinned ? "Pinned" : "Pin") +
+        "</button>";
       var scoreHtml = pinned
         ? '<div class="rec-score">' +
           '<button class="rec-sc-btn" data-action="rec-score-down" data-id="' +
@@ -235,10 +235,10 @@ function renderRecords() {
         '<span class="rec-time">' +
         formatTime(r.timestamp) +
         "</span>" +
-        pinBtn +
-        scoreHtml +
+        scoreHtml + // 星号删掉了，这里只保留打分（如果有）
         "</div>" +
         "</div>" +
+        pinBtn + // <--- 将 Pin 按钮放在这里，它会被自动推到最右侧
         "</div>";
     }
   }
@@ -386,46 +386,6 @@ document.getElementById("watchlist").addEventListener("click", function (e) {
     removeEntry(parseInt(btn.dataset.idx));
     return;
   }
-
-  var recPinBtn = e.target.closest("[data-action='rec-pin']");
-  if (recPinBtn) {
-    var id = recPinBtn.dataset.id;
-    var rec = records.find(function (r) {
-      return r.id === id;
-    });
-    if (rec) {
-      var newPinned = !rec.pinned;
-      var newScore = newPinned && !rec.score ? 50 : rec.score;
-      var idx = records.findIndex(function (r) {
-        return r.id === id;
-      });
-      records[idx].pinned = newPinned ? 1 : 0;
-      if (newPinned && !rec.score) records[idx].score = 50;
-      window.electronAPI.toggleRecordPin(id, newPinned, records[idx].score);
-      renderRecords();
-    }
-    return;
-  }
-
-  var scoreUp = e.target.closest("[data-action='rec-score-up']");
-  var scoreDown = e.target.closest("[data-action='rec-score-down']");
-  if (scoreUp || scoreDown) {
-    var rid = (scoreUp || scoreDown).dataset.id;
-    var rec = records.find(function (r) {
-      return r.id === rid;
-    });
-    if (rec && rec.pinned) {
-      var cur = rec.score ?? 50;
-      var newScore = Math.max(0, Math.min(100, cur + (scoreUp ? 5 : -5)));
-      var idx = records.findIndex(function (r) {
-        return r.id === rid;
-      });
-      records[idx].score = newScore;
-      window.electronAPI.toggleRecordPin(rid, true, newScore);
-      renderRecords();
-    }
-    return;
-  }
 });
 
 // Filter chips
@@ -444,6 +404,51 @@ document
 document
   .getElementById("recordsContainer")
   .addEventListener("click", function (e) {
+    // 拦截 Pin 按钮的点击
+    var recPinBtn = e.target.closest("[data-action='rec-pin']");
+    if (recPinBtn) {
+      e.stopPropagation(); // 重要：阻止事件冒泡到外层触发 openUrl
+      var id = recPinBtn.dataset.id;
+      var rec = records.find(function (r) {
+        return r.id === id;
+      });
+      if (rec) {
+        var newPinned = !rec.pinned;
+        var newScore = newPinned && !rec.score ? 50 : rec.score;
+        var idx = records.findIndex(function (r) {
+          return r.id === id;
+        });
+        records[idx].pinned = newPinned ? 1 : 0;
+        if (newPinned && !rec.score) records[idx].score = 50;
+        window.electronAPI.toggleRecordPin(id, newPinned, records[idx].score);
+        renderRecords();
+      }
+      return;
+    }
+
+    // 拦截打分按钮的点击
+    var scoreUp = e.target.closest("[data-action='rec-score-up']");
+    var scoreDown = e.target.closest("[data-action='rec-score-down']");
+    if (scoreUp || scoreDown) {
+      e.stopPropagation(); // 重要：阻止事件冒泡
+      var rid = (scoreUp || scoreDown).dataset.id;
+      var rec = records.find(function (r) {
+        return r.id === rid;
+      });
+      if (rec && rec.pinned) {
+        var cur = rec.score ?? 50;
+        var newScore = Math.max(0, Math.min(100, cur + (scoreUp ? 5 : -5)));
+        var idx = records.findIndex(function (r) {
+          return r.id === rid;
+        });
+        records[idx].score = newScore;
+        window.electronAPI.toggleRecordPin(rid, true, newScore);
+        renderRecords();
+      }
+      return;
+    }
+
+    // 如果没有点击上述按钮，则正常打开网页
     var item = e.target.closest(".record-item");
     if (item) {
       var url = decodeURIComponent(item.dataset.url);

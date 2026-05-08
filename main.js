@@ -191,13 +191,39 @@ function handleExtensionMessage(ws, msg) {
   switch (msg.type) {
     case "addRecord": {
       const now = Date.now();
-      const cutoff = now - 60000;
-      const dup = dbGet(
-        "SELECT 1 FROM records WHERE url = ? AND tabId = ? AND timestamp > ?",
-        [msg.url, msg.tabId, cutoff],
-      );
-      if (dup) return;
 
+      // 1. 查找数据库中是否已经存在完全相同的 URL
+      const existing = dbGet(
+        "SELECT * FROM records WHERE url = ? ORDER BY timestamp DESC LIMIT 1",
+        [msg.url],
+      );
+
+      if (existing) {
+        // [保留原有防抖设计] 如果是同一个标签页，在 60 秒内频繁刷新，直接忽略，防止分数狂飙
+        if (msg.tabId === existing.tabId && now - existing.timestamp < 60000) {
+          return;
+        }
+
+        // 2. 根据用户需求更新状态
+        let newPinned = 1; // 只要重复访问过，就必定变为 Pin 状态
+        let newScore = existing.pinned ? (existing.score || 0) + 1 : 1;
+
+        // 3. 更新数据库中的记录（同时更新时间戳，让这条记录浮到时间线的最前面）
+        dbRun(
+          "UPDATE records SET pinned = ?, score = ?, timestamp = ? WHERE id = ?",
+          [newPinned, newScore, now, existing.id],
+        );
+
+        // 4. 广播通知前端 UI 更新这条记录，而不是插入新记录
+        existing.pinned = newPinned;
+        existing.score = newScore;
+        existing.timestamp = now;
+        broadcastToExtensions({ type: "recordUpdated", record: existing });
+
+        return; // 提前终止，不再执行下方的插入逻辑
+      }
+
+      // === 下面是原本的首次访问插入逻辑 ===
       const record = {
         id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
         url: msg.url,
