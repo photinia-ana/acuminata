@@ -3,315 +3,662 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src ws://127.0.0.1:8766 ws://localhost:8766">
   <title>Site History Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0d0f14;
-      --surface: #161921;
-      --surface2: #1e2230;
-      --border: #2a2f42;
+      --bg: #0b0d12;
+      --surface: #13161e;
+      --surface2: #1b1f2b;
+      --border: #252a38;
+      --border2: #2e3345;
       --accent: #5b8dee;
       --accent2: #e85d8a;
       --text: #e4e8f5;
       --text2: #7a80a0;
+      --text3: #4a5070;
       --success: #52c97a;
       --danger: #e85d5d;
+      --warning: #f0a040;
       --mono: 'JetBrains Mono', monospace;
       --sans: 'Noto Sans SC', sans-serif;
     }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
       background: var(--bg);
       color: var(--text);
       font-family: var(--sans);
-      min-height: 100vh;
-      line-height: 1.6;
+      font-size: 13px;
+      line-height: 1.5;
+      overflow: hidden;
+      height: 100vh;
+      user-select: none;
     }
-    .layout {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 40px 24px 80px;
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
     }
+
+    /* ── header ── */
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 48px;
-      padding-bottom: 24px;
+      padding: 12px 20px;
       border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      -webkit-app-region: drag;
     }
-    .logo { display: flex; align-items: center; gap: 14px; }
-    .logo-icon {
-      width: 44px; height: 44px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border-radius: 12px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
-    }
-    .logo-text h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
-    .logo-text p { font-size: 12px; color: var(--text2); font-family: var(--mono); }
-    .toggle-wrap { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text2); }
-    .toggle { position: relative; width: 44px; height: 24px; }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute; inset: 0;
-      background: var(--border); border-radius: 24px;
-      cursor: pointer; transition: 0.25s;
-    }
-    .slider::before {
-      content: ''; position: absolute;
-      width: 18px; height: 18px;
-      left: 3px; top: 3px;
-      background: white; border-radius: 50%;
-      transition: 0.25s;
-    }
-    input:checked + .slider { background: var(--accent); }
-    input:checked + .slider::before { transform: translateX(20px); }
-    .stats-bar {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
+
+    .logo {
+      display: flex;
+      align-items: center;
       gap: 12px;
-      margin-bottom: 40px;
+      -webkit-app-region: no-drag;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .logo h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
+    .logo .ver {
+      font-size: 10px; color: var(--text3);
+      font-family: var(--mono);
+      margin-left: 6px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      -webkit-app-region: no-drag;
+    }
+
+    .ws-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text3);
+    }
+    .ws-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--text3);
+      transition: background 0.3s;
+    }
+    .ws-dot.on { background: var(--success); box-shadow: 0 0 5px var(--success); }
+    .ws-dot.off { background: var(--danger); }
+
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+    .tgl {
+      position: relative;
+      width: 38px; height: 22px;
+    }
+    .tgl input { opacity: 0; width: 0; height: 0; }
+    .tgl-slider {
+      position: absolute; inset: 0;
+      background: var(--border);
+      border-radius: 22px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .tgl-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+    .tgl input:checked + .tgl-slider { background: var(--accent); }
+    .tgl input:checked + .tgl-slider::before { transform: translateX(16px); }
+
+    /* ── main grid ── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── records panel (left) ── */
+    .records-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+    }
+    .panel-top {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .search-box {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0 12px;
+      transition: border-color 0.2s;
+    }
+    .search-box:focus-within { border-color: var(--accent); }
+    .search-box input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 12px;
+      font-family: var(--sans);
+      padding: 7px 0;
+    }
+    .search-box input::placeholder { color: var(--text3); }
+    .search-icon { color: var(--text3); font-size: 14px; }
+    .search-clear {
+      background: none; border: none;
+      color: var(--text3); cursor: pointer;
+      font-size: 16px; padding: 0 2px;
+      display: none;
+    }
+    .search-clear.visible { display: block; }
+    .search-clear:hover { color: var(--text2); }
+
+    .filter-bar {
+      padding: 8px 16px;
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+    .filter-bar::-webkit-scrollbar { height: 0; }
+    .filter-chip {
+      padding: 4px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-family: var(--mono);
+      color: var(--text2);
+      transition: all 0.15s;
+      flex-shrink: 0;
+      background: var(--surface);
+    }
+    .filter-chip:hover { border-color: var(--accent); }
+    .filter-chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .records-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .records-scroll::-webkit-scrollbar { width: 5px; }
+    .records-scroll::-webkit-scrollbar-track { background: transparent; }
+    .records-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+    .date-header {
+      padding: 10px 16px 6px;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 1;
+    }
+
+    .record-item {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: background 0.1s;
+      border-bottom: 1px solid rgba(42,47,66,0.4);
+    }
+    .record-item:hover { background: var(--surface); }
+    .record-item .rec-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .record-item .rec-body { flex: 1; min-width: 0; }
+    .record-item .rec-title {
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .record-item .rec-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .record-item .rec-domain {
+      font-size: 10px;
+      font-family: var(--mono);
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: var(--surface2);
+    }
+    .record-item .rec-time {
+      font-size: 10px;
+      color: var(--text3);
+      font-family: var(--mono);
+    }
+
+    .load-more-bar {
+      padding: 10px;
+      text-align: center;
+    }
+    .load-more-bar button {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      padding: 6px 20px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-family: var(--mono);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .load-more-bar button:hover { border-color: var(--accent); color: var(--accent); }
+
+    .empty-records {
+      padding: 48px 20px;
+      text-align: center;
+      color: var(--text3);
+    }
+    .empty-records .empty-icon { font-size: 40px; margin-bottom: 10px; opacity: 0.5; }
+    .empty-records .empty-text { font-size: 13px; }
+
+    /* ── sidebar (right) ── */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      gap: 0;
+    }
+    .sidebar::-webkit-scrollbar { width: 5px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
     }
     .stat-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px 20px;
+      border-radius: 10px;
+      padding: 12px 14px;
     }
-    .stat-value {
+    .stat-card .val {
       font-family: var(--mono);
-      font-size: 28px; font-weight: 600;
-      color: var(--accent); line-height: 1;
-      margin-bottom: 4px;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--accent);
+      line-height: 1.1;
+      margin-bottom: 3px;
     }
-    .stat-label { font-size: 12px; color: var(--text2); }
-    .section { margin-bottom: 40px; }
-    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    .section-title {
-      font-size: 13px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 1.2px;
-      color: var(--text2); font-family: var(--mono);
+    .stat-card .lbl {
+      font-size: 11px;
+      color: var(--text3);
     }
-    .add-form {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px; margin-bottom: 16px;
+
+    .sidebar-section {
+      border-top: 1px solid var(--border);
     }
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 160px 80px auto;
-      gap: 10px; align-items: end;
+    .sect-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      user-select: none;
     }
-    .field label {
-      display: block; font-size: 11px; color: var(--text2);
-      font-family: var(--mono); margin-bottom: 6px; letter-spacing: 0.5px;
+    .sect-hdr:hover { color: var(--text); }
+    .sect-hdr .arrow {
+      transition: transform 0.2s;
+      font-size: 10px;
     }
-    .field input {
-      width: 100%;
-      background: var(--bg); border: 1px solid var(--border);
-      border-radius: 8px; padding: 9px 12px;
-      color: var(--text); font-family: var(--mono); font-size: 13px;
-      outline: none; transition: border-color 0.2s;
+    .sect-hdr.collapsed .arrow { transform: rotate(-90deg); }
+    .sect-body { overflow: hidden; }
+
+    .watchlist-items { padding: 0 12px 8px; }
+    .watch-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      transition: background 0.1s;
+      font-size: 12px;
     }
-    .field input:focus { border-color: var(--accent); }
-    .color-field input[type="color"] {
-      width: 100%; height: 37px;
-      border-radius: 8px; border: 1px solid var(--border);
-      background: var(--bg); cursor: pointer; padding: 2px 4px;
+    .watch-item:hover { background: var(--surface); }
+    .watch-item .wd-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
     }
-    .btn {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 9px 16px; border-radius: 8px;
-      border: none; cursor: pointer;
-      font-size: 13px; font-weight: 600;
-      font-family: var(--sans); transition: all 0.2s;
+    .watch-item .wd-domain {
+      font-family: var(--mono);
+      font-weight: 600;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .btn-primary { background: var(--accent); color: white; }
-    .btn-primary:hover { background: #7aa5f5; transform: translateY(-1px); }
-    .btn-danger {
-      background: transparent; color: var(--danger);
-      border: 1px solid var(--danger); padding: 5px 10px; font-size: 12px;
+    .watch-item .wd-label {
+      font-size: 10px;
+      color: var(--text3);
+      background: var(--surface2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
     }
-    .btn-danger:hover { background: var(--danger); color: white; }
-    .btn-ghost {
-      background: transparent; color: var(--text2); border: 1px solid var(--border);
+    .watch-item .wd-count {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent);
+      flex-shrink: 0;
+      min-width: 36px;
+      text-align: right;
     }
-    .btn-ghost:hover { border-color: var(--text2); color: var(--text); }
-    .watchlist { display: flex; flex-direction: column; gap: 8px; }
-    .watch-item {
-      background: var(--surface);
+    .watch-item .wd-remove {
+      background: none;
+      border: none;
+      color: var(--text3);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .watch-item .wd-remove:hover { color: var(--danger); }
+
+    /* ── record pin/score ── */
+    .rec-pin {
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text3);
+      flex-shrink: 0;
+      user-select: none;
+      margin-right: 2px;
+    }
+    .rec-pin.on { color: var(--warning); }
+    .rec-score {
+      display: flex;
+      align-items: center;
+      gap: 1px;
+      flex-shrink: 0;
+      background: var(--surface2);
+      border-radius: 5px;
+      padding: 0 2px;
+    }
+    .rec-sc-btn {
+      background: none;
+      border: none;
+      color: var(--text3);
+      cursor: pointer;
+      font-size: 12px;
+      font-family: var(--mono);
+      padding: 1px 4px;
+      line-height: 1;
+    }
+    .rec-sc-btn:hover { color: var(--text); }
+    .rec-sc-val {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--warning);
+      min-width: 20px;
+      text-align: center;
+    }
+
+    .empty-watchlist {
+      text-align: center;
+      padding: 16px;
+      color: var(--text3);
+      font-size: 12px;
+    }
+
+    .add-form-inline {
+      padding: 8px 14px;
+      display: none;
+    }
+    .add-form-inline.open { display: block; }
+    .add-form-inline .af-row {
+      display: flex;
+      gap: 6px;
+      align-items: end;
+    }
+    .add-form-inline input[type="text"] {
+      flex: 1;
+      background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 10px; padding: 14px 16px;
-      display: flex; align-items: center; gap: 14px;
-      transition: border-color 0.2s;
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+      outline: none;
+      min-width: 0;
     }
-    .watch-item:hover { border-color: var(--accent); }
-    .color-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .watch-domain { font-family: var(--mono); font-size: 14px; font-weight: 600; flex: 1; }
-    .watch-label { font-size: 12px; color: var(--text2); background: var(--surface2); padding: 3px 8px; border-radius: 4px; }
-    .watch-count { font-family: var(--mono); font-size: 12px; color: var(--accent); min-width: 60px; text-align: right; }
-    .empty-state {
-      text-align: center; padding: 40px;
-      color: var(--text2); font-size: 14px;
+    .add-form-inline input[type="text"]:focus { border-color: var(--accent); }
+    .add-form-inline input[type="color"] {
+      width: 32px; height: 28px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      cursor: pointer;
+      padding: 2px;
+    }
+    .btn-sm {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--sans);
+      white-space: nowrap;
+    }
+    .btn-sm.primary { background: var(--accent); color: #fff; }
+    .btn-sm.primary:hover { background: #7aa5f5; }
+    .btn-sm.ghost {
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border);
+    }
+    .btn-sm.ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    .sidebar-actions {
+      padding: 12px;
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+    }
+    .btn-act {
+      flex: 1;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
       background: var(--surface);
-      border: 1px dashed var(--border); border-radius: 14px;
+      color: var(--text2);
+      font-size: 12px;
+      cursor: pointer;
+      font-family: var(--sans);
+      transition: all 0.15s;
+      text-align: center;
     }
-    .records-section { display: flex; gap: 16px; }
-    .records-list {
-      flex: 1; background: var(--surface);
-      border: 1px solid var(--border); border-radius: 14px;
-      overflow: hidden;
-    }
-    .records-header {
-      padding: 14px 16px; border-bottom: 1px solid var(--border);
-      font-size: 12px; color: var(--text2); font-family: var(--mono);
-    }
-    .record-item {
-      padding: 12px 16px; border-bottom: 1px solid var(--border);
-      cursor: pointer; transition: background 0.15s;
-    }
-    .record-item:hover { background: var(--surface2); }
-    .record-item:last-child { border-bottom: none; }
-    .record-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
-    .record-meta { display: flex; align-items: center; gap: 8px; }
-    .record-domain { font-size: 10px; font-family: var(--mono); padding: 2px 6px; border-radius: 3px; background: var(--surface2); }
-    .record-time { font-size: 10px; color: var(--text2); font-family: var(--mono); }
-    .filter-bar {
-      padding: 10px 14px; border-bottom: 1px solid var(--border);
-      display: flex; gap: 6px; overflow-x: auto;
-    }
-    .filter-chip {
-      padding: 4px 10px; border-radius: 20px;
-      border: 1px solid var(--border); font-size: 11px;
-      cursor: pointer; white-space: nowrap; transition: all 0.15s; font-family: var(--mono);
-    }
-    .filter-chip.active { background: var(--accent); border-color: var(--accent); color: white; }
-    .action-row { display: flex; gap: 12px; flex-wrap: wrap; }
-    .btn-export { background: var(--surface); color: var(--success); border: 1px solid var(--success); }
-    .btn-export:hover { background: var(--success); color: #0d0f14; }
-    .btn-clear { background: var(--surface); color: var(--danger); border: 1px solid var(--danger); }
-    .btn-clear:hover { background: var(--danger); color: white; }
+    .btn-act.export { color: var(--success); border-color: rgba(82,201,122,0.3); }
+    .btn-act.export:hover { background: var(--success); color: var(--bg); }
+    .btn-act.clear { color: var(--danger); border-color: rgba(232,93,93,0.3); }
+    .btn-act.clear:hover { background: var(--danger); color: #fff; }
+
+    /* ── toast ── */
     .toast {
-      position: fixed; bottom: 24px; right: 24px;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 10px; padding: 12px 18px; font-size: 13px;
-      display: flex; align-items: center; gap: 8px;
-      transform: translateY(80px); opacity: 0;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transform: translateY(80px);
+      opacity: 0;
       transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
       z-index: 999;
+      pointer-events: none;
     }
     .toast.show { transform: translateY(0); opacity: 1; }
     .toast.success { border-color: var(--success); color: var(--success); }
     .toast.error { border-color: var(--danger); color: var(--danger); }
-    .connection-status { display: flex; align-items: center; gap: 8px; font-size: 12px; font-family: var(--mono); color: var(--text2); }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
-    .status-dot.off { background: var(--text2); box-shadow: none; }
-    @media (max-width: 768px) {
-      .form-row { grid-template-columns: 1fr 1fr; }
-      .stats-bar { grid-template-columns: 1fr 1fr; }
-      .records-section { flex-direction: column; }
-    }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <header>
-      <div class="logo">
-        <div class="logo-icon">📡</div>
-        <div class="logo-text">
-          <h1>Site History Tracker</h1>
-          <p>浏览记录追踪器 · 桌面端</p>
-        </div>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">📡</div>
+      <h1>Site History Tracker</h1>
+    </div>
+    <div class="header-right">
+      <div class="ws-status">
+        <div class="ws-dot" id="wsDot"></div>
+        <span id="wsStatusText">未连接</span>
       </div>
-      <div style="display:flex;align-items:center;gap:20px;">
-        <div class="connection-status">
-          <div class="status-dot" id="wsStatus"></div>
-          <span id="wsStatusText">连接中...</span>
-        </div>
-        <div class="toggle-wrap">
-          <span id="toggleLabel">追踪中</span>
-          <label class="toggle">
-            <input type="checkbox" id="enabledToggle" checked>
-            <span class="slider"></span>
-          </label>
-        </div>
-      </div>
-    </header>
-
-    <div class="stats-bar">
-      <div class="stat-card">
-        <div class="stat-value" id="statTotal">0</div>
-        <div class="stat-label">总记录数</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" id="statToday">0</div>
-        <div class="stat-label">今日记录</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" id="statSites">0</div>
-        <div class="stat-label">追踪站点数</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" id="statTopSite">-</div>
-        <div class="stat-label" id="statTopSiteLabel">最多访问</div>
+      <div class="toggle-wrap">
+        <span id="toggleLabel">追踪中</span>
+        <label class="tgl">
+          <input type="checkbox" id="enabledToggle" checked>
+          <span class="tgl-slider"></span>
+        </label>
       </div>
     </div>
+  </header>
 
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">追踪站点配置</div>
-      </div>
-      <div class="add-form">
-        <div class="form-row">
-          <div class="field">
-            <label>域名 DOMAIN</label>
-            <input type="text" id="inputDomain" placeholder="bilibili.com">
-          </div>
-          <div class="field">
-            <label>备注 LABEL</label>
-            <input type="text" id="inputLabel" placeholder="B站">
-          </div>
-          <div class="field color-field">
-            <label>颜色 COLOR</label>
-            <input type="color" id="inputColor" value="#5b8dee">
-          </div>
-          <div class="field">
-            <label>&nbsp;</label>
-            <button class="btn btn-primary" id="btnAdd">+ 添加</button>
-          </div>
+  <div class="main-grid">
+    <!-- Records Panel -->
+    <div class="records-panel">
+      <div class="panel-top">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="搜索标题或域名...">
+          <button class="search-clear" id="searchClear">✕</button>
         </div>
       </div>
-      <div class="watchlist" id="watchlist">
-        <div class="empty-state">暂无追踪站点，请在上方添加</div>
+      <div class="filter-bar" id="filterBar">
+        <div class="filter-chip active" data-domain="all">全部</div>
       </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title" style="margin-bottom:16px;">最近浏览记录</div>
-      <div class="records-list">
-        <div class="filter-bar" id="filterBar">
-          <div class="filter-chip active" data-domain="all">全部</div>
-        </div>
+      <div class="records-scroll" id="recordsScroll">
         <div id="recordsContainer"></div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">数据管理</div>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="val" id="statTotal">0</div>
+          <div class="lbl">总记录数</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statToday">0</div>
+          <div class="lbl">今日记录</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statSites">0</div>
+          <div class="lbl">追踪站点</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statTopSite" style="font-size:15px">-</div>
+          <div class="lbl" id="statTopSiteLabel">最多访问</div>
+        </div>
       </div>
-      <div class="action-row">
-        <button class="btn btn-export" id="btnExport">⬇ 导出 JSON</button>
-        <button class="btn btn-clear" id="btnClear">🗑 清空所有记录</button>
+
+      <div class="sidebar-section">
+        <div class="sect-hdr" id="watchlistToggle">
+          <span>追踪站点</span>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <button class="btn-sm ghost" id="btnToggleAdd" style="font-size:10px;padding:3px 8px;">+</button>
+            <span class="arrow">▼</span>
+          </span>
+        </div>
+        <div class="sect-body" id="watchlistBody">
+          <div class="add-form-inline" id="addFormInline">
+            <div class="af-row">
+              <input type="text" id="inputDomain" placeholder="bilibili.com" style="flex:1.5">
+              <input type="text" id="inputLabel" placeholder="备注">
+              <input type="color" id="inputColor" value="#5b8dee">
+              <button class="btn-sm primary" id="btnAdd">添加</button>
+            </div>
+          </div>
+          <div class="watchlist-items" id="watchlist">
+            <div class="empty-watchlist">暂无追踪站点</div>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <div class="sidebar-actions">
+        <button class="btn-act export" id="btnExport">⬇ 导出 JSON</button>
+        <button class="btn-act clear" id="btnClear">🗑 清空记录</button>
+      </div>
+    </aside>
   </div>
+</div>
 
-  <div class="toast" id="toast"></div>
+<div class="toast" id="toast"></div>
 
-  <script src="renderer.js"></script>
+<script src="renderer.js"></script>
 </body>
 </html>

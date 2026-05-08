@@ -1,7 +1,12 @@
 {
   "name": "browser-history-tracker",
+  "productName": "Site History Tracker",
   "version": "1.0.0",
   "description": "Desktop app with browser extension for tracking browsing history",
+  "author": {
+    "name": "RoyHe",
+    "email": "roooyhe@163.com"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -11,9 +16,21 @@
     "devcert": "^1.2.3",
     "mkcert": "^3.2.0",
     "selfsigned": "^5.5.0",
+    "sql.js": "^1.12.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "electron": "^42.0.0"
+  },
+  "build": {
+    "appId": "com.roooyhe.site-history-tracker",
+    "productName": "Site History Tracker",
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
