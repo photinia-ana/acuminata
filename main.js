@@ -603,6 +603,18 @@ ipcMain.handle("export-data", () => {
   return { watchlist, records: rows };
 });
 
+ipcMain.handle("delete-records", (_, ids) => {
+  if (!ids || ids.length === 0) return false;
+
+  // 生成与 ids 数量匹配的问号占位符，例如: "?, ?, ?"
+  const placeholders = ids.map(() => "?").join(",");
+  dbRun(`DELETE FROM records WHERE id IN (${placeholders})`, ids);
+
+  // 广播通知前端更新（可选）
+  broadcastToExtensions({ type: "recordsCleared" });
+  return true;
+});
+
 ipcMain.handle("open-url", (_, url) => {
   try {
     const u = new URL(url);

@@ -9,6 +9,7 @@ let totalRecords = 0;
 let loadedAll = false;
 let stats = null;
 let wsConnected = false;
+let selectedIds = new Set(); // 新增：保存当前选中的记录 ID
 
 function formatTime(ts) {
   const d = new Date(ts);
@@ -215,6 +216,13 @@ function renderRecords() {
         '<div class="record-item" data-url="' +
         encodeURIComponent(r.url) +
         '">' +
+        // -- 新增的复选框 --
+        '<input type="checkbox" class="rec-checkbox" data-action="rec-select" data-id="' +
+        r.id +
+        '" ' +
+        (selectedIds.has(r.id) ? "checked" : "") +
+        ">" +
+        // ------------------
         '<div class="rec-dot" style="background:' +
         color +
         '"></div>' +
@@ -230,6 +238,9 @@ function renderRecords() {
         "</span>" +
         '<span class="rec-time">' +
         formatTime(r.timestamp) +
+        "</span>" +
+        '<span class="rec-url">' +
+        escapeHtml(r.url) +
         "</span>" +
         scoreHtml + // 星号删掉了，这里只保留打分（如果有）
         "</div>" +
@@ -258,6 +269,17 @@ function renderRecords() {
     lm.addEventListener("click", function () {
       loadRecords(currentPage + 1);
     });
+  }
+}
+
+function updateBatchDeleteBtn() {
+  var btn = document.getElementById("btnBatchDelete");
+  if (!btn) return;
+  if (selectedIds.size > 0) {
+    btn.style.display = "block";
+    btn.textContent = "删除选中 (" + selectedIds.size + ")";
+  } else {
+    btn.style.display = "none";
   }
 }
 
@@ -400,6 +422,18 @@ document
 document
   .getElementById("recordsContainer")
   .addEventListener("click", function (e) {
+    // === 新增：拦截复选框的点击 ===
+    var chk = e.target.closest("[data-action='rec-select']");
+    if (chk) {
+      e.stopPropagation(); // 重要：阻止冒泡，防止触发整行跳转
+      if (chk.checked) {
+        selectedIds.add(chk.dataset.id);
+      } else {
+        selectedIds.delete(chk.dataset.id);
+      }
+      updateBatchDeleteBtn();
+      return;
+    }
     // 拦截 Pin 按钮的点击
     var recPinBtn = e.target.closest("[data-action='rec-pin']");
     if (recPinBtn) {
@@ -658,3 +692,27 @@ window.electronAPI.onWatchlistUpdate(function (data) {
   watchlist = data.watchlist;
   renderWatchlist();
 });
+
+// 批量删除
+var btnBatchDelete = document.getElementById("btnBatchDelete");
+if (btnBatchDelete) {
+  btnBatchDelete.addEventListener("click", async function () {
+    if (selectedIds.size === 0) return;
+    if (!confirm("确认删除选中的 " + selectedIds.size + " 条记录吗？")) return;
+
+    // 执行删除
+    await window.electronAPI.deleteRecords(Array.from(selectedIds));
+
+    // 清空选中状态并隐藏按钮
+    selectedIds.clear();
+    updateBatchDeleteBtn();
+
+    // 重新拉取数据刷新界面
+    records = [];
+    await loadRecords(1);
+    await refreshStats();
+    renderStats();
+    renderFilterBar();
+    showToast("已删除选中记录", "success");
+  });
+}
