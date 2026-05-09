@@ -29,4 +29,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAiConfig: () => ipcRenderer.invoke("get-ai-config"),
   setAiConfig: (config) => ipcRenderer.invoke("set-ai-config", config),
   testAiConnection: () => ipcRenderer.invoke("test-ai-connection"),
+  getLocale: () => ipcRenderer.invoke("get-locale"),
+  setLocale: (code) => ipcRenderer.invoke("set-locale", code),
 });

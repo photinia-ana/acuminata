@@ -20,13 +20,56 @@ let aiConfig = {
 };
 let aiConnected = false;
 let aiBusy = false;
+let locale = { code: "zh-CN", data: {} };
+
+function t(key, params) {
+  var str = locale.data[key] || key;
+  if (params) {
+    for (var k in params) {
+      str = str.replace("{" + k + "}", params[k]);
+    }
+  }
+  return str;
+}
+
+async function applyLocale() {
+  var els = document.querySelectorAll("[data-i18n]");
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    var key = el.getAttribute("data-i18n");
+    if (key) el.textContent = t(key);
+  }
+  var phs = document.querySelectorAll("[data-i18n-placeholder]");
+  for (var j = 0; j < phs.length; j++) {
+    var ph = phs[j];
+    ph.placeholder = t(ph.getAttribute("data-i18n-placeholder"));
+  }
+}
+
+async function setLocale(code) {
+  try {
+    var old = document.querySelector(".lang-option.active");
+    if (old) old.classList.remove("active");
+    var next = document.querySelector('.lang-option[data-code="' + code + '"]');
+    if (next) next.classList.add("active");
+    await window.electronAPI.setLocale(code);
+    var result = await window.electronAPI.getLocale();
+    locale.code = result.code;
+    locale.data = result.data;
+    applyLocale();
+    renderFilterBar();
+    renderStats();
+    renderWatchlist();
+    renderRecords();
+  } catch (e) {}
+}
 
 function formatTime(ts) {
   const d = new Date(ts);
   const now = new Date();
   const diff = now - d;
-  if (diff < 60000) return "刚刚";
-  if (diff < 3600000) return Math.floor(diff / 60000) + "分钟前";
+  if (diff < 60000) return t("time.justNow");
+  if (diff < 3600000) return t("time.minutesAgo", { n: Math.floor(diff / 60000) });
   if (d.toDateString() === now.toDateString()) {
     return d.toLocaleTimeString("zh-CN", {
       hour: "2-digit",
@@ -76,7 +119,7 @@ function setWsStatus(connected) {
   var dot = document.getElementById("wsDot");
   var txt = document.getElementById("wsStatusText");
   dot.className = "ws-dot " + (connected ? "on" : "off");
-  txt.textContent = connected ? "已连接" : "未连接";
+  txt.textContent = connected ? t("header.ws.connected") : t("header.ws.disconnected");
 }
 
 function dateGroupLabel(ts) {
@@ -84,8 +127,8 @@ function dateGroupLabel(ts) {
   var today = new Date();
   var yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "今天";
-  if (d.toDateString() === yesterday.toDateString()) return "昨天";
+  if (d.toDateString() === today.toDateString()) return t("date.today");
+  if (d.toDateString() === yesterday.toDateString()) return t("date.yesterday");
   return d.toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "2-digit",
@@ -98,22 +141,25 @@ function renderStats() {
   document.getElementById("statTotal").textContent = stats.total;
   document.getElementById("statToday").textContent = stats.today;
   document.getElementById("statSites").textContent = watchlist.length;
+  document.getElementById("statTotalLabel").textContent = t("stats.totalRecords");
+  document.getElementById("statTodayLabel").textContent = t("stats.today");
+  document.getElementById("statSitesLabel").textContent = t("stats.sites");
   if (stats.topDomain) {
     var label = stats.topDomain;
     if (label.length > 10) label = label.slice(0, 10) + "...";
     document.getElementById("statTopSite").textContent = label;
     document.getElementById("statTopSiteLabel").textContent =
-      "最多访问 " + stats.topDomainCount + "次";
+      t("stats.mostVisitedCount", { n: stats.topDomainCount });
   } else {
     document.getElementById("statTopSite").textContent = "-";
-    document.getElementById("statTopSiteLabel").textContent = "最多访问";
+    document.getElementById("statTopSiteLabel").textContent = t("stats.mostVisited");
   }
 }
 
 function renderWatchlist() {
   var container = document.getElementById("watchlist");
   if (watchlist.length === 0) {
-    container.innerHTML = '<div class="empty-watchlist">暂无追踪站点</div>';
+    container.innerHTML = '<div class="empty-watchlist">' + t("watchlist.empty") + '</div>';
     return;
   }
   var counts = (stats && stats.domainCounts) || {};
@@ -143,7 +189,7 @@ function renderWatchlist() {
         "</div>" +
         '<div class="wd-count">' +
         (counts[entry.domain] || 0) +
-        " 条</div>" +
+        t("watchlist.items", { n: "" }) + "</div>" +
         '<button class="wd-remove" data-idx="' +
         idx +
         '">×</button>' +
@@ -205,7 +251,7 @@ function renderRecords() {
       (searchQuery ? "🔍" : "📭") +
       "</div>" +
       '<div class="empty-text">' +
-      (searchQuery ? "无匹配结果" : "暂无记录") +
+      (searchQuery ? t("empty.noMatch") : t("empty.noRecords")) +
       "</div>" +
       "</div>";
     if (searchQuery) {
@@ -230,7 +276,7 @@ function renderRecords() {
         '" data-action="rec-pin" data-id="' +
         r.id +
         '">' +
-        (pinned ? "Pinned" : "Pin") +
+        (pinned ? t("record.pinned") : t("record.pin")) +
         "</button>";
       var scoreHtml = pinned
         ? '<div class="rec-score">' +
@@ -286,11 +332,9 @@ function renderRecords() {
   if (!loadedAll && !searchQuery) {
     html +=
       '<div class="load-more-bar">' +
-      '<button id="btnLoadMore">加载更多 (' +
-      records.length +
-      " / " +
-      totalRecords +
-      ")</button>" +
+      '<button id="btnLoadMore">' +
+      t("button.loadMore", { loaded: records.length, total: totalRecords }) +
+      "</button>" +
       "</div>";
   }
 
@@ -310,7 +354,7 @@ function updateBatchDeleteBtn() {
   if (!btn) return;
   if (selectedIds.size > 0) {
     btn.style.display = "block";
-    btn.textContent = "删除选中 (" + selectedIds.size + ")";
+    btn.textContent = t("button.batchDelete", { n: selectedIds.size });
   } else {
     btn.style.display = "none";
   }
@@ -328,17 +372,17 @@ function renderFilterBar() {
       (activeFilter === "recommend"
         ? "background: linear-gradient(135deg, var(--accent), var(--accent2));border-color: transparent;color: #fff;"
         : "background: linear-gradient(135deg, rgba(91,141,238,0.1), rgba(232,93,138,0.1));border-color: rgba(91,141,238,0.3);") +
-      '">✨ 智能推荐</div>',
+      '">' + t("filter.ai") + '</div>',
     '<div class="filter-chip' +
       (activeFilter === "all" ? " active" : "") +
-      '" data-domain="all">全部</div>',
+      '" data-domain="all">' + t("filter.all") + '</div>',
     '<div class="filter-chip' +
       (activeFilter === "pinned" ? " active" : "") +
       '" data-domain="pinned" style="border-color: var(--warning); ' +
       (activeFilter === "pinned"
         ? "background: var(--warning); color: #000;"
         : "color: var(--warning);") +
-      '">★ 已收藏</div>',
+      '">' + t("filter.pinned") + '</div>',
   ];
 
   domains.forEach(function (d) {
@@ -491,14 +535,11 @@ async function handleAiAnalyze() {
         .join("");
       document.getElementById("aiKeywords").innerHTML =
         kwHtml || '<span style="color:var(--text3);font-size:12px">-</span>';
-      showToast(
-        "AI 分析完成，基于 " + result.recordsAnalyzed + " 条高价值记录",
-        "success",
-      );
+      showToast(t("ai.analyzed", { n: result.recordsAnalyzed }), "success");
     }
   } catch (e) {
     document.getElementById("aiError").textContent =
-      "分析失败: " + (e.message || e);
+      t("ai.failed", { msg: e.message || e });
     document.getElementById("aiError").classList.add("active");
     document.getElementById("aiTriggerArea").style.display = "block";
   } finally {
@@ -511,24 +552,24 @@ async function handleTestAi() {
   saveAiConfig();
   var btn = document.getElementById("btnTestAi");
   var ind = document.getElementById("aiIndicator");
-  btn.textContent = "测试中...";
+  btn.textContent = t("ai.testing");
   btn.disabled = true;
   try {
     var result = await window.electronAPI.testAiConnection();
     aiConnected = result.ok;
     ind.className = "pc-indicator " + (result.ok ? "ok" : "err");
-    var providerName = { ollama: "Ollama", openai: "OpenAI", anthropic: "Anthropic", minimax: "MiniMax" }[result.provider] || result.provider;
+    var providerName = t("provider." + result.provider) || t("provider.default");
     if (result.ok) {
-      showToast(providerName + " 连接正常", "success");
+      showToast(t("toast.connected", { provider: providerName }), "success");
     } else {
-      showToast("连接失败: " + (result.error || "未知错误"), "error");
+      showToast(t("toast.connectFailed", { msg: result.error || t("toast.unknownError") }), "error");
     }
   } catch (e) {
     aiConnected = false;
     ind.className = "pc-indicator err";
-    showToast("连接失败: " + (e.message || e), "error");
+    showToast(t("toast.connectFailed", { msg: e.message || e }), "error");
   } finally {
-    btn.textContent = "测试连接";
+    btn.textContent = t("ai.testBtn");
     btn.disabled = false;
   }
 }
@@ -589,6 +630,9 @@ async function init() {
     aiConfig.endpoint = cfg.endpoint || "http://127.0.0.1:11434";
     aiConfig.apiKey = cfg.apiKey || "";
     aiConfig.model = cfg.model || "qwen2.5:7b";
+    var loc = await window.electronAPI.getLocale();
+    locale.code = loc.code;
+    locale.data = loc.data;
     await refreshStats();
   } catch (e) {
     console.error("Init error:", e);
@@ -596,13 +640,14 @@ async function init() {
 
   document.getElementById("enabledToggle").checked = enabled;
   document.getElementById("toggleLabel").textContent = enabled
-    ? "追踪中"
-    : "已暂停";
+    ? t("header.tracking")
+    : t("header.paused");
 
   renderWatchlist();
   renderStats();
   renderFilterBar();
   await loadRecords(1, activeFilter);
+  applyLocale();
   setWsStatus(true);
 }
 
@@ -741,9 +786,9 @@ document
     enabled = e.target.checked;
     await window.electronAPI.setEnabled(enabled);
     document.getElementById("toggleLabel").textContent = enabled
-      ? "追踪中"
-      : "已暂停";
-    showToast(enabled ? "追踪已开启" : "追踪已暂停", "success");
+      ? t("header.tracking")
+      : t("header.paused");
+    showToast(enabled ? t("toast.trackingOn") : t("toast.trackingOff"), "success");
   });
 
 // Input keydown
@@ -817,12 +862,15 @@ document.getElementById("aiEndpoint").addEventListener("change", saveAiConfig);
 document.getElementById("aiModel").addEventListener("change", saveAiConfig);
 document.getElementById("aiApiKey").addEventListener("change", saveAiConfig);
 
+document.getElementById("langZh").addEventListener("click", function () { setLocale("zh-CN"); });
+document.getElementById("langEn").addEventListener("click", function () { setLocale("en"); });
+
 document.getElementById("btnClearRecs").addEventListener("click", async function () {
-  if (!confirm("确认清空所有推荐内容？")) return;
+  if (!confirm(t("confirm.clearRecs"))) return;
   await window.electronAPI.clearRecommendations();
   recommendations = [];
   renderRecommendations([]);
-  showToast("已清空推荐列表", "success");
+  showToast(t("toast.recsCleared"), "success");
 });
 
 document.getElementById("aiPanel").addEventListener("click", function (e) {
@@ -845,11 +893,11 @@ document.getElementById("aiPanel").addEventListener("click", function (e) {
               return r.status === 0;
             });
             renderRecommendations(filtered);
-            showToast("已转入收藏", "success");
+            showToast(t("toast.accepted"), "success");
           }
         })
         .catch(function (e) {
-          showToast("操作失败", "error");
+          showToast(t("toast.opFailed"), "error");
         });
     } else {
       window.electronAPI
@@ -864,7 +912,7 @@ document.getElementById("aiPanel").addEventListener("click", function (e) {
           renderRecommendations(filtered);
         })
         .catch(function (e) {
-          showToast("操作失败", "error");
+          showToast(t("toast.opFailed"), "error");
         });
     }
     return;
@@ -895,7 +943,7 @@ async function addEntry() {
   var regexFilter = document.getElementById("inputRegexFilter").value.trim();
 
   if (!domain) {
-    showToast("请输入域名", "error");
+    showToast(t("toast.domainRequired"), "error");
     return;
   }
   if (
@@ -903,7 +951,7 @@ async function addEntry() {
       return e.domain === domain;
     })
   ) {
-    showToast("该域名已存在", "error");
+    showToast(t("toast.domainExists"), "error");
     return;
   }
 
@@ -923,17 +971,17 @@ async function addEntry() {
   document.getElementById("addFormInline").classList.remove("open");
   renderWatchlist();
   renderStats();
-  showToast("已添加 " + domain, "success");
+  showToast(t("toast.added", { domain: domain }), "success");
 }
 
 async function removeEntry(idx) {
   var entry = watchlist[idx];
-  if (!confirm("确认移除 " + entry.domain + "？相关记录不会删除。")) return;
+  if (!confirm(t("confirm.removeDomain", { domain: entry.domain }))) return;
   watchlist.splice(idx, 1);
   await window.electronAPI.removeFromWatchlist(entry.domain);
   renderWatchlist();
   renderStats();
-  showToast("已移除", "success");
+  showToast(t("toast.removed"), "success");
 }
 
 async function exportData() {
@@ -945,14 +993,14 @@ async function exportData() {
   var a = document.createElement("a");
   a.href = url;
   a.download =
-    "site-history-" + new Date().toISOString().slice(0, 10) + ".json";
+    "acuminata-" + new Date().toISOString().slice(0, 10) + ".json";
   a.click();
   URL.revokeObjectURL(url);
-  showToast("导出成功", "success");
+  showToast(t("toast.exported"), "success");
 }
 
 async function clearData() {
-  if (!confirm("确认清空所有浏览记录？此操作不可撤销。")) return;
+  if (!confirm(t("confirm.clearAll"))) return;
   await window.electronAPI.clearRecords();
   records = [];
   totalRecords = 0;
@@ -961,7 +1009,7 @@ async function clearData() {
   renderRecords();
   renderStats();
   renderFilterBar();
-  showToast("已清空所有记录", "success");
+  showToast(t("toast.cleared"), "success");
 }
 
 // ── Broadcast handlers ──
@@ -1028,8 +1076,8 @@ window.electronAPI.onUpdate(function (data) {
     enabled = data.enabled;
     document.getElementById("enabledToggle").checked = enabled;
     document.getElementById("toggleLabel").textContent = enabled
-      ? "追踪中"
-      : "已暂停";
+      ? t("header.tracking")
+      : t("header.paused");
   } else if (data.type === "recordUpdated") {
     if (data.record) {
       var idx = records.findIndex(function (r) {
@@ -1053,7 +1101,7 @@ var btnBatchDelete = document.getElementById("btnBatchDelete");
 if (btnBatchDelete) {
   btnBatchDelete.addEventListener("click", async function () {
     if (selectedIds.size === 0) return;
-    if (!confirm("确认删除选中的 " + selectedIds.size + " 条记录吗？")) return;
+    if (!confirm(t("confirm.batchDelete", { n: selectedIds.size }))) return;
 
     // 执行删除
     await window.electronAPI.deleteRecords(Array.from(selectedIds));
@@ -1068,6 +1116,6 @@ if (btnBatchDelete) {
     await refreshStats();
     renderStats();
     renderFilterBar();
-    showToast("已删除选中记录", "success");
+    showToast(t("toast.deleted"), "success");
   });
 }

@@ -402,7 +402,7 @@ function OptionsIndex() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `site-history-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `acuminata-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
     showToast("导出成功", "success")
@@ -431,7 +431,7 @@ function OptionsIndex() {
           <div style={s.logoWrap}>
             <div style={s.logoIcon}>📡</div>
             <div>
-              <div style={s.logoTitle}>Site History Tracker</div>
+              <div style={s.logoTitle}>Acuminata</div>
               <div style={s.logoSub}>浏览记录追踪器 · 设置</div>
             </div>
           </div>

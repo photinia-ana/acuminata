@@ -1,6 +1,6 @@
 {
-  "name": "browser-history-tracker",
-  "productName": "Site History Tracker",
+  "name": "acuminata",
+  "productName": "Acuminata",
   "version": "1.0.0",
   "description": "Desktop app with browser extension for tracking browsing history",
   "author": {
@@ -23,8 +23,8 @@
     "electron": "^42.0.0"
   },
   "build": {
-    "appId": "com.roooyhe.site-history-tracker",
-    "productName": "Site History Tracker",
+    "appId": "com.roooyhe.acuminata",
+    "productName": "Acuminata",
     "win": {
       "target": "nsis"
     },

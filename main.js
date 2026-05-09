@@ -22,6 +22,37 @@ let aiConfig = {
 };
 let db;
 let saveTimer = null;
+let locale = {};
+let localeCode = "zh-CN";
+
+function t(key, params) {
+  let str = locale[key] || key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      str = str.replace("{" + k + "}", v);
+    }
+  }
+  return str;
+}
+
+function loadLocale() {
+  const row = dbGet("SELECT value FROM settings WHERE key = ?", ["locale"]);
+  if (row) localeCode = row.value;
+  else {
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["locale", localeCode]);
+  }
+  try {
+    const file = path.join(__dirname, "locales", localeCode + ".json");
+    locale = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    try {
+      const file = path.join(__dirname, "locales", "zh-CN.json");
+      locale = JSON.parse(fs.readFileSync(file, "utf8"));
+    } catch (e2) {
+      locale = {};
+    }
+  }
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -471,7 +502,7 @@ function createWindow() {
     y: bounds ? bounds.y : undefined,
     minWidth: 750,
     minHeight: 500,
-    title: "Site History Tracker",
+    title: "Acuminata",
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -538,11 +569,12 @@ function saveWindowBounds() {
 }
 
 app.whenReady().then(async () => {
-  app.setName("Site History Tracker");
-  app.setAppUserModelId("com.roooyhe.site-history-tracker");
+  app.setName("ACUMINATA");
+  app.setAppUserModelId("com.roooyhe.acuminata");
   await initDatabase();
   loadWatchlist();
   loadSettings();
+  loadLocale();
   startExtensionServer();
   createWindow();
 
@@ -785,7 +817,10 @@ function httpRequestJson(urlObj, method, headers, body, timeout) {
       path: urlObj.pathname + urlObj.search,
       method: method,
       headers: Object.assign(
-        { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+        {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
         headers,
       ),
       timeout: timeout || 60000,
@@ -795,7 +830,16 @@ function httpRequestJson(urlObj, method, headers, body, timeout) {
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
         if (res.statusCode >= 400) {
-          reject(new Error("HTTP " + res.statusCode + " → " + urlStr + " : " + data.slice(0, 200)));
+          reject(
+            new Error(
+              "HTTP " +
+                res.statusCode +
+                " → " +
+                urlStr +
+                " : " +
+                data.slice(0, 200),
+            ),
+          );
           return;
         }
         resolve({ status: res.statusCode, data });
@@ -804,7 +848,7 @@ function httpRequestJson(urlObj, method, headers, body, timeout) {
     req.on("error", (e) => reject(new Error(e.message + " → " + urlStr)));
     req.on("timeout", () => {
       req.destroy();
-      reject(new Error("请求超时 → " + urlStr));
+      reject(new Error(t("ai.error.httpTimeout") + " → " + urlStr));
     });
     req.write(body);
     req.end();
@@ -822,22 +866,31 @@ function callOllama(prompt) {
 
   function parseResponse(data) {
     let result;
-    try { result = JSON.parse(data); }
-    catch (e) {
+    try {
+      result = JSON.parse(data);
+    } catch (e) {
       console.error("Ollama: failed to parse response:", data.slice(0, 500));
-      throw new Error("Ollama 返回了非 JSON 数据，请检查 Ollama 是否在运行");
+      throw new Error(t("ai.error.ollamaNotJson"));
     }
-    if (result.error) throw new Error(typeof result.error === "string" ? result.error : JSON.stringify(result.error));
+    if (result.error)
+      throw new Error(
+        typeof result.error === "string"
+          ? result.error
+          : JSON.stringify(result.error),
+      );
     return result.response || data;
   }
 
-  return request(true).then(({ data }) => parseResponse(data), (err) => {
-    if (err.message && err.message.includes("format")) {
-      console.error("Ollama: format=json failed, retrying without format");
-      return request(false).then(({ data }) => parseResponse(data));
-    }
-    throw err;
-  });
+  return request(true).then(
+    ({ data }) => parseResponse(data),
+    (err) => {
+      if (err.message && err.message.includes("format")) {
+        console.error("Ollama: format=json failed, retrying without format");
+        return request(false).then(({ data }) => parseResponse(data));
+      }
+      throw err;
+    },
+  );
 }
 
 function callOpenAI(prompt) {
@@ -846,25 +899,39 @@ function callOpenAI(prompt) {
   const body = JSON.stringify({
     model: aiConfig.model,
     messages: [
-      { role: "system", content: "You are a content recommendation expert. Always respond with valid JSON only, no markdown fences." },
+      {
+        role: "system",
+        content:
+          "You are a content recommendation expert. Always respond with valid JSON only, no markdown fences.",
+      },
       { role: "user", content: prompt },
     ],
     response_format: { type: "json_object" },
     temperature: 0.7,
   });
-  return httpRequestJson(url, "POST", { Authorization: "Bearer " + aiConfig.apiKey }, body).then(
-    ({ status, data }) => {
-      let result;
-      try { result = JSON.parse(data); }
-      catch (e) {
-        console.error("OpenAI: failed to parse response, status:", status, data.slice(0, 500));
-        throw new Error("OpenAI API 返回了非 JSON 数据 (HTTP " + status + ")");
-      }
-      if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
-      if (!result.choices || !result.choices[0]) throw new Error("OpenAI 返回数据缺少 choices");
-      return result.choices[0].message.content;
-    },
-  );
+  return httpRequestJson(
+    url,
+    "POST",
+    { Authorization: "Bearer " + aiConfig.apiKey },
+    body,
+  ).then(({ status, data }) => {
+    let result;
+    try {
+      result = JSON.parse(data);
+    } catch (e) {
+      console.error(
+        "OpenAI: failed to parse response, status:",
+        status,
+        data.slice(0, 500),
+      );
+      throw new Error(t("ai.error.openaiNotJson", { status: String(status) }));
+    }
+    if (result.error)
+      throw new Error(result.error.message || JSON.stringify(result.error));
+    if (!result.choices || !result.choices[0])
+      throw new Error(t("ai.error.openaiNoChoices"));
+    return result.choices[0].message.content;
+  });
 }
 
 function callAnthropic(prompt) {
@@ -873,7 +940,8 @@ function callAnthropic(prompt) {
   const body = JSON.stringify({
     model: aiConfig.model,
     max_tokens: 1024,
-    system: "You are a content recommendation expert. Always respond with valid JSON only, no markdown fences.",
+    system:
+      "You are a content recommendation expert. Always respond with valid JSON only, no markdown fences.",
     messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
   });
   return httpRequestJson(
@@ -883,18 +951,24 @@ function callAnthropic(prompt) {
     body,
   ).then(({ status, data }) => {
     let result;
-    try { result = JSON.parse(data); }
-    catch (e) {
-      console.error("Anthropic: failed to parse response, status:", status, data.slice(0, 500));
-      throw new Error("Anthropic API 返回了非 JSON 数据 (HTTP " + status + ")");
+    try {
+      result = JSON.parse(data);
+    } catch (e) {
+      console.error(
+        "Anthropic: failed to parse response, status:",
+        status,
+        data.slice(0, 500),
+      );
+      throw new Error(t("ai.error.anthropicNotJson", { status: String(status) }));
     }
-    if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
+    if (result.error)
+      throw new Error(result.error.message || JSON.stringify(result.error));
     if (result.content) {
       for (const block of result.content) {
         if (block.type === "text" && block.text != null) return block.text;
       }
     }
-    throw new Error("Anthropic 返回数据缺少 text content");
+    throw new Error(t("ai.error.anthropicNoText"));
   });
 }
 
@@ -962,6 +1036,23 @@ function buildAnalysisPrompt(records) {
   );
 }
 
+ipcMain.handle("get-locale", () => {
+  return { code: localeCode, data: locale };
+});
+
+ipcMain.handle("set-locale", (_, code) => {
+  localeCode = code;
+  dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["locale", code]);
+  const file = path.join(__dirname, "locales", code + ".json");
+  try { locale = JSON.parse(fs.readFileSync(file, "utf8")); }
+  catch (e) {
+    try {
+      const file2 = path.join(__dirname, "locales", "zh-CN.json");
+      locale = JSON.parse(fs.readFileSync(file2, "utf8"));
+    } catch (e2) { locale = {}; }
+  }
+});
+
 ipcMain.handle("get-ai-config", () => {
   return {
     provider: aiConfig.provider,
@@ -1019,14 +1110,26 @@ function extractJson(text) {
   let end = -1;
   for (let i = start; i < s.length; i++) {
     const ch = s[i];
-    if (escape) { escape = false; continue; }
-    if (ch === "\\" && inString) { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
     if (inString) continue;
     if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
-      if (depth === 0) { end = i; break; }
+      if (depth === 0) {
+        end = i;
+        break;
+      }
     }
   }
   if (end === -1) return null;
@@ -1037,18 +1140,24 @@ ipcMain.handle("trigger-agent-analysis", async () => {
   try {
     const records = extractHighValueRecords();
     if (records.length === 0) {
-      return { error: "暂无足够的高价值记录用于分析，请先收藏或打分一些记录。" };
+      return {
+        error: t("ai.emptyRecords"),
+      };
     }
     const prompt = buildAnalysisPrompt(records);
     const response = await callAI(prompt);
     if (!response || typeof response !== "string") {
-      console.error("callAI returned non-string:", typeof response, JSON.stringify(response).slice(0, 300));
-      return { error: "AI 返回了空响应，请检查 API 配置或切换 Provider" };
+      console.error(
+        "callAI returned non-string:",
+        typeof response,
+        JSON.stringify(response).slice(0, 300),
+      );
+      return { error: t("ai.emptyResponse") };
     }
     const jsonStr = extractJson(response);
     if (!jsonStr) {
       console.error("No JSON found in response:", response.slice(0, 500));
-      return { error: "AI 未返回有效的 JSON 格式数据" };
+      return { error: t("ai.invalidJson") };
     }
     const analysis = JSON.parse(jsonStr);
     return {
@@ -1058,7 +1167,7 @@ ipcMain.handle("trigger-agent-analysis", async () => {
     };
   } catch (e) {
     console.error("Agent analysis error:", e);
-    return { error: "AI 分析失败: " + (e.message || e) };
+    return { error: t("ai.failed", { msg: e.message || e }) };
   }
 });
 
@@ -1089,7 +1198,17 @@ ipcMain.handle("accept-recommendation", (_, id) => {
   };
   dbRun(
     "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)",
-    [record.id, record.url, record.title, record.domain, record.matchedRule, record.tabId, record.timestamp, now, now],
+    [
+      record.id,
+      record.url,
+      record.title,
+      record.domain,
+      record.matchedRule,
+      record.tabId,
+      record.timestamp,
+      now,
+      now,
+    ],
   );
   broadcastToExtensions({ type: "recordAdded", record });
   return record;

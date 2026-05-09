@@ -7,7 +7,7 @@
             http-equiv="Content-Security-Policy"
             content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src ws://127.0.0.1:8766 ws://localhost:8766"
         />
-        <title>Site History Tracker</title>
+        <title>Acuminata</title>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
@@ -790,7 +790,11 @@
             .ai-header .ai-icon {
                 width: 40px;
                 height: 40px;
-                background: linear-gradient(135deg, var(--accent), var(--accent2));
+                background: linear-gradient(
+                    135deg,
+                    var(--accent),
+                    var(--accent2)
+                );
                 border-radius: 12px;
                 display: flex;
                 align-items: center;
@@ -815,7 +819,11 @@
                 text-align: center;
             }
             .btn-ai-trigger {
-                background: linear-gradient(135deg, var(--accent), var(--accent2));
+                background: linear-gradient(
+                    135deg,
+                    var(--accent),
+                    var(--accent2)
+                );
                 color: #fff;
                 border: none;
                 padding: 12px 32px;
@@ -824,7 +832,9 @@
                 font-weight: 600;
                 font-family: var(--sans);
                 cursor: pointer;
-                transition: transform 0.15s, box-shadow 0.15s;
+                transition:
+                    transform 0.15s,
+                    box-shadow 0.15s;
             }
             .btn-ai-trigger:hover {
                 transform: translateY(-1px);
@@ -974,7 +984,11 @@
             .rec-card .rec-card-icon {
                 width: 32px;
                 height: 32px;
-                background: linear-gradient(135deg, var(--accent), var(--accent2));
+                background: linear-gradient(
+                    135deg,
+                    var(--accent),
+                    var(--accent2)
+                );
                 border-radius: 8px;
                 display: flex;
                 align-items: center;
@@ -1132,6 +1146,41 @@
                 border-color: var(--danger);
                 color: var(--danger);
             }
+
+            /* ── 语言选择器 ── */
+            .lang-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 14px;
+                border-top: 1px solid var(--border);
+                font-size: 11px;
+                color: var(--text3);
+            }
+            .lang-options {
+                display: flex;
+                gap: 4px;
+            }
+            .lang-option {
+                background: var(--surface2);
+                border: 1px solid var(--border);
+                color: var(--text2);
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 11px;
+                font-family: var(--mono);
+                cursor: pointer;
+                transition: all 0.15s;
+            }
+            .lang-option:hover {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+            .lang-option.active {
+                background: var(--accent);
+                border-color: var(--accent);
+                color: #fff;
+            }
         </style>
     </head>
     <body>
@@ -1139,15 +1188,15 @@
             <header>
                 <div class="logo">
                     <div class="logo-icon">📡</div>
-                    <h1>Site History Tracker</h1>
+                    <h1>Acuminata</h1>
                 </div>
                 <div class="header-right">
                     <div class="ws-status">
                         <div class="ws-dot" id="wsDot"></div>
-                        <span id="wsStatusText">未连接</span>
+                        <span id="wsStatusText" data-i18n="header.ws.disconnected">未连接</span>
                     </div>
                     <div class="toggle-wrap">
-                        <span id="toggleLabel">追踪中</span>
+                        <span id="toggleLabel" data-i18n="header.tracking">追踪中</span>
                         <label class="tgl">
                             <input type="checkbox" id="enabledToggle" checked />
                             <span class="tgl-slider"></span>
@@ -1166,6 +1215,7 @@
                                 type="text"
                                 id="searchInput"
                                 placeholder="搜索标题或域名..."
+                                data-i18n-placeholder="search.placeholder"
                             />
                             <button class="search-clear" id="searchClear">
                                 ✕
@@ -1195,46 +1245,73 @@
                             <div class="ai-header">
                                 <div class="ai-icon">🤖</div>
                                 <div>
-                                    <div class="ai-title">AI 智能推荐</div>
-                                    <div class="ai-subtitle">本地 Ollama 分析 · 隐私安全</div>
+                                    <div class="ai-title" data-i18n="ai.title">AI 智能推荐</div>
+                                    <div class="ai-subtitle" data-i18n="ai.subtitle">
+                                        本地分析 · 隐私安全
+                                    </div>
                                 </div>
                             </div>
 
                             <div class="ai-provider-config">
-                                <div class="pc-hdr">AI 服务配置</div>
+                                <div class="pc-hdr" data-i18n="ai.config">AI 服务配置</div>
                                 <div class="pc-row">
                                     <label>Provider</label>
                                     <select id="aiProvider">
-                                        <option value="ollama">Ollama (本地)</option>
-                                        <option value="openai">OpenAI API</option>
-                                        <option value="anthropic">Anthropic API</option>
-                                        <option value="minimax">MiniMax (Anthropic 兼容)</option>
+                                        <option value="ollama" data-i18n="provider.ollama">Ollama (本地)</option>
+                                        <option value="openai" data-i18n="provider.openai">OpenAI API</option>
+                                        <option value="anthropic" data-i18n="provider.anthropic">Anthropic API</option>
+                                        <option value="minimax" data-i18n="provider.minimax">MiniMax (Anthropic 兼容)</option>
                                     </select>
                                 </div>
                                 <div class="pc-row">
                                     <label>Endpoint</label>
-                                    <input type="text" id="aiEndpoint" placeholder="http://127.0.0.1:11434" />
+                                    <input
+                                        type="text"
+                                        id="aiEndpoint"
+                                        placeholder="http://127.0.0.1:11434"
+                                    />
                                 </div>
-                                <div class="pc-row" id="aiApiKeyRow" style="display:none">
+                                <div
+                                    class="pc-row"
+                                    id="aiApiKeyRow"
+                                    style="display: none"
+                                >
                                     <label>API Key</label>
-                                    <input type="password" id="aiApiKey" placeholder="sk-..." />
+                                    <input
+                                        type="password"
+                                        id="aiApiKey"
+                                        placeholder="sk-..."
+                                    />
                                 </div>
                                 <div class="pc-row">
                                     <label>Model</label>
-                                    <input type="text" id="aiModel" placeholder="qwen2.5:7b" />
+                                    <input
+                                        type="text"
+                                        id="aiModel"
+                                        placeholder="qwen2.5:7b"
+                                    />
                                 </div>
                                 <div class="pc-row">
                                     <label></label>
                                     <div class="pc-actions">
-                                        <button class="btn-sm ghost" id="btnTestAi">测试连接</button>
-                                        <div class="pc-indicator" id="aiIndicator"></div>
+                                        <button class="btn-sm ghost" id="btnTestAi" data-i18n="ai.testBtn">测试连接</button>
+                                        <div
+                                            class="pc-indicator"
+                                            id="aiIndicator"
+                                        ></div>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="ai-trigger-area" id="aiTriggerArea">
-                                <button class="btn-ai-trigger" id="btnAiAnalyze">🤖 开始分析我的偏好</button>
-                                <div class="ai-trigger-hint">基于您的高分/收藏记录，本地 AI 为您分析内容偏好</div>
+                                <button class="btn-ai-trigger" id="btnAiAnalyze" data-i18n="ai.trigger">🤖 开始分析我的偏好</button>
+                                <div class="ai-trigger-hint" data-i18n="ai.hint">基于您的高分/收藏记录，本地 AI 为您分析内容偏好</div>
+                            </div>
+
+                            <div class="ai-loading" id="aiLoading">
+                                <div class="ai-spinner"></div>
+                                <span data-i18n="ai.loading">AI 正在分析您的偏好...</span>
+                            </div>
                             </div>
 
                             <div class="ai-loading" id="aiLoading">
@@ -1246,19 +1323,38 @@
 
                             <div class="ai-result" id="aiResult">
                                 <div class="ai-summary-card">
-                                    <div class="ai-sc-label">📊 口味分析</div>
+                                    <div class="ai-sc-label" data-i18n="ai.summary">📊 口味分析</div>
                                     <div class="ai-sc-text" id="aiSummary"></div>
                                 </div>
                                 <div class="ai-keywords-card">
-                                    <div class="ai-kw-label">🔑 推荐关键词</div>
+                                    <div class="ai-kw-label" data-i18n="ai.keywords">🔑 推荐关键词</div>
                                     <div class="ai-keywords-list" id="aiKeywords"></div>
                                 </div>
                             </div>
 
                             <div class="ai-recs-section" id="aiRecsSection">
                                 <div class="ai-recs-hdr">
+                                    <span data-i18n="ai.recs">📋 已发现的推荐内容</span>
+                                    <button class="btn-ai-clear" id="btnClearRecs" data-i18n="ai.clearRecs">清空推荐</button>
+                                </div>
+                                <div class="ai-keywords-card">
+                                    <div class="ai-kw-label">🔑 推荐关键词</div>
+                                    <div
+                                        class="ai-keywords-list"
+                                        id="aiKeywords"
+                                    ></div>
+                                </div>
+                            </div>
+
+                            <div class="ai-recs-section" id="aiRecsSection">
+                                <div class="ai-recs-hdr">
                                     <span>📋 已发现的推荐内容</span>
-                                    <button class="btn-ai-clear" id="btnClearRecs">清空推荐</button>
+                                    <button
+                                        class="btn-ai-clear"
+                                        id="btnClearRecs"
+                                    >
+                                        清空推荐
+                                    </button>
                                 </div>
                                 <div id="aiRecsContainer"></div>
                             </div>
@@ -1271,33 +1367,25 @@
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="val" id="statTotal">0</div>
-                            <div class="lbl">总记录数</div>
+                            <div class="lbl" id="statTotalLabel" data-i18n="stats.totalRecords">总记录数</div>
                         </div>
                         <div class="stat-card">
                             <div class="val" id="statToday">0</div>
-                            <div class="lbl">今日记录</div>
+                            <div class="lbl" id="statTodayLabel" data-i18n="stats.today">今日记录</div>
                         </div>
                         <div class="stat-card">
                             <div class="val" id="statSites">0</div>
-                            <div class="lbl">追踪站点</div>
+                            <div class="lbl" id="statSitesLabel" data-i18n="stats.sites">追踪站点</div>
                         </div>
                         <div class="stat-card">
-                            <div
-                                class="val"
-                                id="statTopSite"
-                                style="font-size: 15px"
-                            >
-                                -
-                            </div>
-                            <div class="lbl" id="statTopSiteLabel">
-                                最多访问
-                            </div>
+                            <div class="val" id="statTopSite" style="font-size: 15px">-</div>
+                            <div class="lbl" id="statTopSiteLabel" data-i18n="stats.mostVisited">最多访问</div>
                         </div>
                     </div>
 
                     <div class="sidebar-section">
                         <div class="sect-hdr" id="watchlistToggle">
-                            <span>追踪站点</span>
+                            <span data-i18n="watchlist.title">追踪站点</span>
                             <span
                                 style="
                                     display: flex;
@@ -1322,12 +1410,14 @@
                                         type="text"
                                         id="inputDomain"
                                         placeholder="bilibili.com"
+                                        data-i18n-placeholder="watchlist.domainPlaceholder"
                                         style="flex: 1.5"
                                     />
                                     <input
                                         type="text"
                                         id="inputLabel"
                                         placeholder="分组备注"
+                                        data-i18n-placeholder="watchlist.labelPlaceholder"
                                     />
                                     <input
                                         type="color"
@@ -1349,33 +1439,36 @@
                                             cursor: pointer;
                                         "
                                     >
-                                        <option value="url">匹配 URL</option>
-                                        <option value="title">匹配标题</option>
+                                        <option value="url" data-i18n="watchlist.regexUrl">匹配 URL</option>
+                                        <option value="title" data-i18n="watchlist.regexTitle">匹配标题</option>
                                     </select>
                                     <input
                                         type="text"
                                         id="inputRegexFilter"
                                         placeholder="正则过滤 (可选，如 .*video.*)"
+                                        data-i18n-placeholder="watchlist.regexPlaceholder"
                                         style="flex: 1"
                                     />
-                                    <button class="btn-sm primary" id="btnAdd">
-                                        添加
-                                    </button>
+                                    <button class="btn-sm primary" id="btnAdd" data-i18n="watchlist.add">添加</button>
                                 </div>
                             </div>
                             <div class="watchlist-items" id="watchlist">
-                                <div class="empty-watchlist">暂无追踪站点</div>
+                                <div class="empty-watchlist" data-i18n="watchlist.empty">暂无追踪站点</div>
                             </div>
                         </div>
                     </div>
 
+                    <div class="lang-row">
+                        <span data-i18n="lang.selector">🌐 语言 / Language</span>
+                        <div class="lang-options">
+                            <button class="lang-option" id="langZh" data-code="zh-CN" data-i18n="">中</button>
+                            <button class="lang-option" id="langEn" data-code="en">EN</button>
+                        </div>
+                    </div>
+
                     <div class="sidebar-actions">
-                        <button class="btn-act export" id="btnExport">
-                            ⬇ 导出 JSON
-                        </button>
-                        <button class="btn-act clear" id="btnClear">
-                            🗑 清空记录
-                        </button>
+                        <button class="btn-act export" id="btnExport" data-i18n="button.export">⬇ 导出 JSON</button>
+                        <button class="btn-act clear" id="btnClear" data-i18n="button.clear">🗑 清空记录</button>
                     </div>
                 </aside>
             </div>

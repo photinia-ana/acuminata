@@ -411,7 +411,7 @@ function IndexPopup() {
             const url = URL.createObjectURL(blob)
             const a = document.createElement("a")
             a.href = url
-            a.download = `site-history-${new Date().toISOString().slice(0, 10)}.json`
+            a.download = `acuminata-${new Date().toISOString().slice(0, 10)}.json`
             a.click()
           }}>
           ⬇ 导出
