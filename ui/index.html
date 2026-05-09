@@ -950,6 +950,114 @@
                 display: block;
             }
 
+            /* ── Agent Actions ── */
+            .agent-actions-section {
+                margin-top: 16px;
+                display: block;
+            }
+            .agent-actions-hdr {
+                font-size: 11px;
+                font-family: var(--mono);
+                color: var(--text3);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                padding: 0 0 10px;
+                margin-bottom: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .agent-profile-summary {
+                font-size: 11px;
+                color: var(--text2);
+                padding: 8px 12px;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                margin-bottom: 10px;
+                display: none;
+            }
+            .agent-profile-summary.active {
+                display: block;
+            }
+            .agent-pending-action {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 10px 12px;
+                background: rgba(91, 141, 238, 0.06);
+                border: 1px solid rgba(91, 141, 238, 0.2);
+                border-radius: 8px;
+                margin-bottom: 8px;
+            }
+            .agent-pending-action .apa-icon {
+                flex-shrink: 0;
+                font-size: 16px;
+                margin-top: 1px;
+            }
+            .agent-pending-action .apa-body {
+                flex: 1;
+                min-width: 0;
+            }
+            .agent-pending-action .apa-body .apa-tool {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--accent);
+                font-family: var(--mono);
+            }
+            .agent-pending-action .apa-body .apa-desc {
+                font-size: 11px;
+                color: var(--text2);
+                margin-top: 2px;
+            }
+            .agent-pending-action .apa-body .apa-reason {
+                font-size: 10px;
+                color: var(--text3);
+                margin-top: 2px;
+                font-style: italic;
+            }
+            .agent-pending-action .apa-actions {
+                display: flex;
+                gap: 6px;
+                flex-shrink: 0;
+            }
+            .apa-btn-approve {
+                background: rgba(82, 201, 122, 0.15);
+                border: 1px solid rgba(82, 201, 122, 0.3);
+                color: var(--success);
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11px;
+                cursor: pointer;
+                font-family: var(--sans);
+                transition: all 0.15s;
+            }
+            .apa-btn-approve:hover {
+                background: var(--success);
+                color: #fff;
+            }
+            .apa-btn-dismiss {
+                background: transparent;
+                border: 1px solid var(--border);
+                color: var(--text3);
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11px;
+                cursor: pointer;
+                font-family: var(--sans);
+                transition: all 0.15s;
+            }
+            .apa-btn-dismiss:hover {
+                border-color: var(--danger);
+                color: var(--danger);
+            }
+            .agent-empty {
+                font-size: 11px;
+                color: var(--text3);
+                padding: 12px;
+                text-align: center;
+            }
+
             /* ── 推荐列表卡片 ── */
             .ai-recs-section {
                 display: none;
@@ -1357,6 +1465,15 @@
                                     </button>
                                 </div>
                                 <div id="aiRecsContainer"></div>
+                            </div>
+
+                            <div class="agent-actions-section" id="agentActionsSection">
+                                <div class="agent-actions-hdr">
+                                    <span data-i18n="agent.title">🧠 Agent Actions</span>
+                                    <button class="btn-sm ghost" id="btnAutoClean" data-i18n="agent.autoClean">Auto-Clean</button>
+                                </div>
+                                <div class="agent-profile-summary" id="agentProfileSummary"></div>
+                                <div class="agent-pending-actions" id="agentPendingActions"></div>
                             </div>
                         </div>
                     </div>

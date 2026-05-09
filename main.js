@@ -5,6 +5,9 @@ const http = require("http");
 const https = require("https");
 const WebSocket = require("ws");
 const initSqlJs = require("sql.js");
+const { getTool, getReadTools, getWriteTools, getOpenAITools, getAnthropicTools } = require("./agent/tools");
+const { agentLoop, getPendingActions, clearPendingActions, addPendingAction, executeApprovedActions } = require("./agent/executor");
+const { getAgentProfile, saveAgentProfile, buildDeleteReflectionPrompt, buildRejectReflectionPrompt, applyReflection } = require("./agent/reflect");
 
 const EXTENSION_PORT = 8766;
 const DB_PATH = path.join(app.getPath("userData"), "tracker.db");
@@ -24,6 +27,7 @@ let db;
 let saveTimer = null;
 let locale = {};
 let localeCode = "zh-CN";
+let pendingAgentActions = [];
 
 function t(key, params) {
   let str = locale[key] || key;
@@ -752,13 +756,13 @@ ipcMain.handle("export-data", () => {
 
 ipcMain.handle("delete-records", (_, ids) => {
   if (!ids || ids.length === 0) return false;
-
-  // 生成与 ids 数量匹配的问号占位符，例如: "?, ?, ?"
   const placeholders = ids.map(() => "?").join(",");
+  const deletedRecords = dbAll(`SELECT * FROM records WHERE id IN (${placeholders})`, ids);
   dbRun(`DELETE FROM records WHERE id IN (${placeholders})`, ids);
-
-  // 广播通知前端更新（可选）
   broadcastToExtensions({ type: "recordsCleared" });
+  if (deletedRecords.length > 0) {
+    setImmediate(() => triggerReflectionOnDelete(deletedRecords));
+  }
   return true;
 });
 
@@ -806,6 +810,229 @@ ipcMain.handle("toggle-record-pin", (_, id, pinned, score) => {
   }
   return !!record;
 });
+
+// ── Agent Tool Handler Map ──
+
+const toolHandlers = {
+  search_records: (args) => {
+    const query = args.query || "";
+    const limit = Math.min(args.limit || 50, 200);
+    const minScore = args.min_score || 0;
+    const domain = args.domain || "";
+    let sql, params;
+    if (domain) {
+      sql = "SELECT id, url, title, domain, matchedRule, timestamp, pinned, score FROM records WHERE (title LIKE ? OR url LIKE ?) AND score >= ? AND matchedRule = ? ORDER BY timestamp DESC LIMIT ?";
+      params = [`%${query}%`, `%${query}%`, minScore, domain, limit];
+    } else {
+      sql = "SELECT id, url, title, domain, matchedRule, timestamp, pinned, score FROM records WHERE (title LIKE ? OR url LIKE ?) AND score >= ? ORDER BY timestamp DESC LIMIT ?";
+      params = [`%${query}%`, `%${query}%`, minScore, limit];
+    }
+    const rows = dbAll(sql, params);
+    return { count: rows.length, records: rows };
+  },
+  get_record_details: (args) => {
+    const row = dbGet("SELECT * FROM records WHERE id = ?", [args.id]);
+    return row || { error: "Record not found" };
+  },
+  get_statistics: async () => {
+    const total = dbGet("SELECT COUNT(*) as total FROM records").total;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const today = dbGet("SELECT COUNT(*) as count FROM records WHERE timestamp >= ?", [todayStart.getTime()]).count;
+    const domainRows = dbAll("SELECT matchedRule, COUNT(*) as count FROM records GROUP BY matchedRule ORDER BY count DESC");
+    const ruleToLabel = {};
+    watchlist.forEach((w) => { ruleToLabel[w.domain] = w.label || w.domain; });
+    const domainCounts = {};
+    for (const r of domainRows) {
+      const label = ruleToLabel[r.matchedRule] || r.matchedRule;
+      domainCounts[label] = (domainCounts[label] || 0) + r.count;
+    }
+    let topDomain = null, topDomainCount = 0;
+    for (const label in domainCounts) {
+      if (!topDomain || domainCounts[label] > topDomainCount) {
+        topDomain = label;
+        topDomainCount = domainCounts[label];
+      }
+    }
+    const sites = new Set(watchlist.map((w) => w.label || w.domain)).size;
+    return { total, today, sites, enabled, domainCounts, topDomain, topDomainCount, watchlistCount: watchlist.length };
+  },
+  get_recommendations: (args) => {
+    const status = args.status !== undefined ? args.status : 0;
+    const limit = args.limit || 50;
+    return dbAll("SELECT * FROM recommendations WHERE status = ? ORDER BY createdAt DESC LIMIT ?", [status, limit]);
+  },
+  get_watchlist: () => {
+    return { watchlist, count: watchlist.length };
+  },
+  get_agent_profile: () => {
+    return getAgentProfile(dbGet, dbRun);
+  },
+  delete_records: async (args) => {
+    const ids = args.ids;
+    if (!ids || ids.length === 0) return { error: "No IDs provided" };
+    const placeholders = ids.map(() => "?").join(",");
+    const deletedRecords = dbAll(`SELECT * FROM records WHERE id IN (${placeholders})`, ids);
+    dbRun(`DELETE FROM records WHERE id IN (${placeholders})`, ids);
+    broadcastToExtensions({ type: "recordsCleared" });
+    if (deletedRecords.length > 0) {
+      setImmediate(() => triggerReflectionOnDelete(deletedRecords));
+    }
+    return { deleted: deletedRecords.length, reason: args.reason || "" };
+  },
+  update_regex_rule: (args) => {
+    const domain = args.domain;
+    const regexFilter = args.regex_filter || "";
+    const regexTarget = args.regex_target || "url";
+    const idx = watchlist.findIndex((w) => w.domain === domain);
+    if (idx === -1) return { error: "Domain not found in watchlist" };
+    watchlist[idx].regexFilter = regexFilter;
+    watchlist[idx].regexTarget = regexTarget;
+    dbRun("UPDATE watchlist SET regexFilter = ?, regexTarget = ? WHERE domain = ?", [regexFilter, regexTarget, domain]);
+    broadcastToExtensions({ type: "watchlistUpdated", watchlist });
+    return { updated: domain, regex_filter: regexFilter, regex_target: regexTarget, reason: args.reason || "" };
+  },
+  update_record_score: (args) => {
+    const id = args.id;
+    const score = Math.max(0, Math.min(100, args.score || 0));
+    dbRun("UPDATE records SET score = ?, updatedAt = ? WHERE id = ?", [score, Date.now(), id]);
+    const record = dbGet("SELECT * FROM records WHERE id = ?", [id]);
+    if (record) broadcastToExtensions({ type: "recordUpdated", record });
+    return record ? { updated: id, score } : { error: "Record not found" };
+  },
+  add_record: (args) => {
+    const now = Date.now();
+    const record = {
+      id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+      url: args.url,
+      title: args.title || "",
+      domain: args.domain,
+      matchedRule: args.matched_rule,
+      tabId: 0,
+      timestamp: now,
+    };
+    dbRun(
+      "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)",
+      [record.id, record.url, record.title, record.domain, record.matchedRule, record.tabId, record.timestamp, now, now],
+    );
+    record.pinned = 1;
+    record.score = 1;
+    record.createdAt = now;
+    record.updatedAt = now;
+    broadcastToExtensions({ type: "recordAdded", record });
+    return { added: record.id, url: args.url, reason: args.reason || "" };
+  },
+};
+
+// ── Agent IPC Handlers ──
+
+function broadcastPendingActions() {
+  broadcastToExtensions({ type: "agentPendingUpdated", actions: pendingAgentActions });
+}
+
+ipcMain.handle("agent-get-pending", () => {
+  return pendingAgentActions;
+});
+
+ipcMain.handle("agent-approve-actions", async (_, actionIds) => {
+  const results = await executeApprovedActions(actionIds, toolHandlers, broadcastToExtensions);
+  // Update the pending list
+  const approvedIds = results.map((r) => r.action.id);
+  pendingAgentActions = pendingAgentActions.filter((a) => !approvedIds.includes(a.id));
+  broadcastPendingActions();
+  return results;
+});
+
+ipcMain.handle("agent-dismiss-actions", (_, actionIds) => {
+  pendingAgentActions = pendingAgentActions.filter((a) => !actionIds.includes(a.id));
+  broadcastPendingActions();
+  return { dismissed: actionIds.length };
+});
+
+ipcMain.handle("agent-get-profile", () => {
+  return getAgentProfile(dbGet, dbRun);
+});
+
+ipcMain.handle("agent-auto-clean", async () => {
+  try {
+    const profile = getAgentProfile(dbGet, dbRun);
+    const stats = await toolHandlers.get_statistics({});
+    const watchlistData = toolHandlers.get_watchlist({});
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+    const sysMsg = `You are a browsing history cleaning assistant. Analyze the user's data and identify records that should be cleaned up. Consider three scenarios:
+1. Dead domains: domains in watchlist that have no records in the last 7 days
+2. Regex mismatches: records that exist under a group but don't match any active regex filter
+3. Low-engagement: records that are not pinned, have score 0 or NULL, and were created more than 14 days ago
+
+Suggest deletions by calling the delete_records tool for junk records, and update_regex_rule if filters need tightening.`;
+
+    const userMsg = `Current statistics: ${JSON.stringify(stats)}\nWatchlist: ${JSON.stringify(watchlistData)}\nUser anti-patterns: ${JSON.stringify(profile.antiPatterns)}\n\nPlease scan the records and suggest cleanup actions.`;
+
+    const messages = [
+      { role: "system", content: sysMsg },
+      { role: "user", content: userMsg },
+    ];
+
+    const { result, pendingActions } = await agentLoop(
+      messages,
+      aiConfig,
+      callAIFns,
+      toolHandlers,
+      broadcastToExtensions,
+    );
+
+    if (pendingActions.length > 0) {
+      pendingAgentActions.push(...pendingActions);
+      broadcastPendingActions();
+    }
+
+    return { result, pendingActions };
+  } catch (e) {
+    console.error("Auto-clean error:", e);
+    return { error: e.message };
+  }
+});
+
+// ── Self-Reflection Triggers ──
+
+async function triggerReflectionOnDelete(deletedRecords) {
+  try {
+    const profile = getAgentProfile(dbGet, dbRun);
+    const keptSample = dbAll(
+      "SELECT * FROM records WHERE pinned = 1 ORDER BY score DESC, timestamp DESC LIMIT 20",
+    );
+    const prompt = buildDeleteReflectionPrompt(deletedRecords, keptSample);
+    const response = await callAI(prompt);
+    const jsonStr = extractJson(response);
+    if (jsonStr) {
+      const reflection = JSON.parse(jsonStr);
+      const updatedProfile = applyReflection(profile, reflection);
+      saveAgentProfile(updatedProfile, dbRun);
+    }
+  } catch (e) {
+    console.error("Reflection on delete error:", e);
+  }
+}
+
+async function triggerReflectionOnReject(rejectedRec) {
+  try {
+    const profile = getAgentProfile(dbGet, dbRun);
+    const keptSample = dbAll(
+      "SELECT * FROM records WHERE pinned = 1 ORDER BY score DESC, timestamp DESC LIMIT 20",
+    );
+    const prompt = buildRejectReflectionPrompt(rejectedRec, keptSample);
+    const response = await callAI(prompt);
+    const jsonStr = extractJson(response);
+    if (jsonStr) {
+      const reflection = JSON.parse(jsonStr);
+      const updatedProfile = applyReflection(profile, reflection);
+      saveAgentProfile(updatedProfile, dbRun);
+    }
+  } catch (e) {
+    console.error("Reflection on reject error:", e);
+  }
+}
 
 function httpRequestJson(urlObj, method, headers, body, timeout) {
   const transport = urlObj.protocol === "https:" ? https : http;
@@ -984,6 +1211,151 @@ function callAI(prompt) {
   }
 }
 
+async function callOllamaTools(messages, tools) {
+  const systemPrompt = `You are an intelligent browsing assistant with access to tools. You can call tools to search records, analyze statistics, and manage the user's watchlist. When you need to call a tool, respond with JSON in this format:
+
+{ "tool_calls": [{ "id": "call_1", "function": { "name": "tool_name", "arguments": "{{...}}" } }], "content": "Your observation text" }
+
+Available tools:
+${JSON.stringify(tools, null, 2)}
+
+When you are done and don't need more tools, respond with:
+{ "content": "Your final response text" }
+
+Always use valid JSON.`;
+
+  const userContent = messages.map((m) => {
+    if (m.role === "tool") return `[Tool result for ${m.tool_call_id}]: ${m.content}`;
+    return `${m.role}: ${m.content || ""}`;
+  }).join("\n\n");
+
+  const prompt = `${systemPrompt}\n\n---\n\n${userContent}`;
+  const response = await callOllama(prompt);
+  try {
+    const parsed = JSON.parse(response);
+    return { content: parsed.content || "", tool_calls: parsed.tool_calls || [] };
+  } catch (e) {
+    return { content: response, tool_calls: [] };
+  }
+}
+
+async function callOpenAITools(messages, tools) {
+  const base = aiConfig.endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const url = new URL(base + "/v1/chat/completions");
+  const msgs = messages[0]?.role === "system"
+    ? messages
+    : [{ role: "system", content: "You are an intelligent browsing history assistant. Use tools to search records, analyze patterns, and manage the watchlist." }, ...messages];
+  const body = JSON.stringify({
+    model: aiConfig.model,
+    messages: msgs,
+    tools: tools,
+    tool_choice: "auto",
+    temperature: 0.7,
+  });
+  const { data } = await httpRequestJson(
+    url,
+    "POST",
+    { Authorization: "Bearer " + aiConfig.apiKey },
+    body,
+  );
+  let result;
+  try {
+    result = JSON.parse(data);
+  } catch (e) {
+    throw new Error(t("ai.error.openaiNotJson", { status: "tool_call" }));
+  }
+  if (result.error)
+    throw new Error(result.error.message || JSON.stringify(result.error));
+  const choice = result.choices?.[0];
+  if (!choice) throw new Error(t("ai.error.openaiNoChoices"));
+  const message = choice.message;
+  const toolCalls = (message.tool_calls || []).map((tc) => ({
+    id: tc.id,
+    name: tc.function?.name,
+    arguments: tc.function?.arguments,
+  }));
+  return { content: message.content || "", tool_calls: toolCalls };
+}
+
+async function callAnthropicTools(messages, tools) {
+  const base = aiConfig.endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const url = new URL(base + "/v1/messages");
+  const systemMsg = messages[0]?.role === "system" ? messages[0].content : "You are an intelligent browsing history assistant. Use tools to search records, analyze patterns, and manage the watchlist.";
+  const conversationMsgs = messages[0]?.role === "system" ? messages.slice(1) : messages;
+  const anthropicMessages = conversationMsgs.map((m) => {
+    if (m.role === "tool") return { role: "user", content: [{ type: "tool_result", tool_use_id: m.tool_call_id, content: m.content }] };
+    if (m.role === "assistant" && m.tool_calls) {
+      const blocks = m.tool_calls.map((tc) => ({
+        type: "tool_use",
+        id: tc.id,
+        name: tc.name,
+        input: typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments,
+      }));
+      if (m.content) blocks.unshift({ type: "text", text: m.content });
+      return { role: "assistant", content: blocks };
+    }
+    return { role: m.role, content: [{ type: "text", text: m.content || "" }] };
+  });
+  const body = JSON.stringify({
+    model: aiConfig.model,
+    max_tokens: 1024,
+    system: systemMsg,
+    messages: anthropicMessages,
+    tools: tools,
+  });
+  const { data } = await httpRequestJson(
+    url,
+    "POST",
+    { "x-api-key": aiConfig.apiKey, "anthropic-version": "2023-06-01" },
+    body,
+  );
+  let result;
+  try {
+    result = JSON.parse(data);
+  } catch (e) {
+    throw new Error(t("ai.error.anthropicNotJson", { status: "tool_call" }));
+  }
+  if (result.error)
+    throw new Error(result.error.message || JSON.stringify(result.error));
+  const toolCalls = [];
+  let textContent = "";
+  if (result.content) {
+    for (const block of result.content) {
+      if (block.type === "text" && block.text != null) textContent += block.text;
+      if (block.type === "tool_use") {
+        toolCalls.push({
+          id: block.id,
+          name: block.name,
+          arguments: JSON.stringify(block.input || {}),
+        });
+      }
+    }
+  }
+  return { content: textContent, tool_calls: toolCalls };
+}
+
+async function callAITools(messages, tools) {
+  const openaiTools = getOpenAITools();
+  const anthropicTools = getAnthropicTools();
+  const allTools = require("./agent/tools").getAllTools();
+
+  switch (aiConfig.provider) {
+    case "openai":
+      return callOpenAITools(messages, openaiTools);
+    case "anthropic":
+    case "minimax":
+      return callAnthropicTools(messages, anthropicTools);
+    default:
+      return callOllamaTools(messages, allTools);
+  }
+}
+
+const callAIFns = {
+  callOpenAIWithTools: (messages, tools) => callOpenAITools(messages, tools),
+  callAnthropicWithTools: (messages, tools) => callAnthropicTools(messages, tools),
+  callOllamaWithTools: (messages, tools) => callOllamaTools(messages, tools),
+};
+
 function extractHighValueRecords() {
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
   let rows = dbAll(
@@ -1140,30 +1512,63 @@ ipcMain.handle("trigger-agent-analysis", async () => {
   try {
     const records = extractHighValueRecords();
     if (records.length === 0) {
-      return {
-        error: t("ai.emptyRecords"),
-      };
+      return { error: t("ai.emptyRecords"), keywords: [], summary: "" };
     }
-    const prompt = buildAnalysisPrompt(records);
-    const response = await callAI(prompt);
-    if (!response || typeof response !== "string") {
-      console.error(
-        "callAI returned non-string:",
-        typeof response,
-        JSON.stringify(response).slice(0, 300),
-      );
-      return { error: t("ai.emptyResponse") };
+    const ruleToLabel = {};
+    watchlist.forEach((w) => { ruleToLabel[w.domain] = w.label || w.domain; });
+
+    const sysMsg = `You are a private content recommendation expert. You have access to tools to explore the user's browsing history. Use them to gain deeper insights.
+
+First, call search_records to sample recent records across different domains.
+Then call get_statistics to understand the distribution.
+Finally, call get_agent_profile to incorporate past learnings.
+
+After gathering data, produce a final analysis as a JSON object:
+{ "summary": "One sentence summary of user preferences in the user's language", "keywords": ["keyword1", "keyword2", ...] }
+
+Always respond in the same language as the user's records. Be concise.`;
+
+    const recordSummary = records.slice(0, 10).map((r) => {
+      const label = ruleToLabel[r.matchedRule] || r.matchedRule;
+      return `[${label}] ${(r.title || "").slice(0, 80)} (score:${r.score || 0})`;
+    }).join("\n");
+
+    const userMsg = `User has ${records.length} high-value records. Sample:\n${recordSummary}\n\nAnalyze their preferences thoroughly using the available tools.`;
+
+    const messages = [
+      { role: "system", content: sysMsg },
+      { role: "user", content: userMsg },
+    ];
+
+    const { result, pendingActions } = await agentLoop(
+      messages,
+      aiConfig,
+      callAIFns,
+      toolHandlers,
+      broadcastToExtensions,
+    );
+
+    if (pendingActions.length > 0) {
+      pendingAgentActions.push(...pendingActions);
+      broadcastPendingActions();
     }
-    const jsonStr = extractJson(response);
-    if (!jsonStr) {
-      console.error("No JSON found in response:", response.slice(0, 500));
-      return { error: t("ai.invalidJson") };
+
+    const jsonStr = extractJson(result || "");
+    let analysis = { summary: "", keywords: [] };
+    if (jsonStr) {
+      try { analysis = JSON.parse(jsonStr); } catch (e) {}
     }
-    const analysis = JSON.parse(jsonStr);
+
+    // Fallback: if no JSON found, use the raw result as summary
+    if (!analysis.summary && result) {
+      analysis.summary = result.slice(0, 200);
+    }
+
     return {
       summary: analysis.summary || "",
       keywords: analysis.keywords || [],
       recordsAnalyzed: records.length,
+      pendingActions: pendingActions.length,
     };
   } catch (e) {
     console.error("Agent analysis error:", e);
@@ -1178,7 +1583,11 @@ ipcMain.handle("get-recommendations", () => {
 });
 
 ipcMain.handle("reject-recommendation", (_, id) => {
+  const rec = dbGet("SELECT * FROM recommendations WHERE id = ?", [id]);
   dbRun("UPDATE recommendations SET status = -1 WHERE id = ?", [id]);
+  if (rec) {
+    setImmediate(() => triggerReflectionOnReject(rec));
+  }
   return true;
 });
 

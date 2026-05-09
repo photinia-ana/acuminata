@@ -21,6 +21,9 @@ let aiConfig = {
 let aiConnected = false;
 let aiBusy = false;
 let locale = { code: "zh-CN", data: {} };
+let pendingAgentActions = [];
+let agentProfile = null;
+let agentBusy = false;
 
 function t(key, params) {
   var str = locale.data[key] || key;
@@ -448,6 +451,7 @@ function renderAiPanel() {
     document.getElementById("aiResult").classList.remove("active");
   }
 
+  renderAgentPanel();
   loadRecommendations();
 }
 
@@ -508,6 +512,103 @@ function renderRecommendations(list) {
     .join("");
 }
 
+function renderAgentPanel() {
+  var profileEl = document.getElementById("agentProfileSummary");
+  var actionsEl = document.getElementById("agentPendingActions");
+
+  if (agentProfile && agentProfile.antiPatterns && agentProfile.antiPatterns.length > 0) {
+    profileEl.classList.add("active");
+    var patterns = agentProfile.antiPatterns.slice(-5).map(function (p) {
+      return '<span style="background:rgba(232,93,93,0.1);border:1px solid rgba(232,93,93,0.2);padding:1px 6px;border-radius:4px;font-size:10px;margin-right:4px;">' + escapeHtml(p) + '</span>';
+    }).join("");
+    profileEl.innerHTML = t("agent.profileAnti") + ": " + patterns;
+  } else if (agentProfile && agentProfile.reflectionLog && agentProfile.reflectionLog.length > 0) {
+    profileEl.classList.add("active");
+    var latest = agentProfile.reflectionLog[0];
+    profileEl.innerHTML = "🧠 " + escapeHtml(latest.insight);
+  } else {
+    profileEl.classList.remove("active");
+    profileEl.innerHTML = "";
+  }
+
+  if (pendingAgentActions.length === 0) {
+    actionsEl.innerHTML = "";
+    return;
+  }
+
+  var html = "";
+  for (var i = 0; i < pendingAgentActions.length; i++) {
+    var a = pendingAgentActions[i];
+    var iconMap = {
+      delete_records: "🗑",
+      update_regex_rule: "🔧",
+      update_record_score: "⭐",
+      add_record: "➕",
+    };
+    var icon = iconMap[a.tool] || "🤖";
+    var args = a.args || {};
+    var desc = "";
+    if (a.tool === "delete_records" && args.ids) {
+      desc = t("agent.actionDelete", { n: args.ids.length });
+    } else if (a.tool === "update_regex_rule") {
+      desc = t("agent.actionRegex", { domain: args.domain || "" });
+    } else if (a.tool === "update_record_score") {
+      desc = t("agent.actionScore", { score: args.score || 0 });
+    } else if (a.tool === "add_record") {
+      desc = t("agent.actionAdd", { title: (args.title || "").slice(0, 30) });
+    } else {
+      desc = a.tool;
+    }
+    html +=
+      '<div class="agent-pending-action">' +
+      '<div class="apa-icon">' + icon + '</div>' +
+      '<div class="apa-body">' +
+      '<div class="apa-tool">' + escapeHtml(a.tool) + '</div>' +
+      '<div class="apa-desc">' + desc + '</div>' +
+      (args.reason ? '<div class="apa-reason">"' + escapeHtml(args.reason) + '"</div>' : '') +
+      '</div>' +
+      '<div class="apa-actions">' +
+      '<button class="apa-btn-approve" data-action="agent-approve" data-id="' + a.id + '">' + t("agent.approve") + '</button>' +
+      '<button class="apa-btn-dismiss" data-action="agent-dismiss" data-id="' + a.id + '">' + t("agent.dismiss") + '</button>' +
+      '</div>' +
+      '</div>';
+  }
+  actionsEl.innerHTML = html;
+}
+
+async function refreshAgentProfile() {
+  try {
+    agentProfile = await window.electronAPI.agentGetProfile();
+    renderAgentPanel();
+  } catch (e) {}
+}
+
+async function handleAutoClean() {
+  if (agentBusy) return;
+  agentBusy = true;
+  document.getElementById("btnAutoClean").textContent = "...";
+  document.getElementById("btnAutoClean").disabled = true;
+
+  try {
+    var result = await window.electronAPI.agentAutoClean();
+    if (result.error) {
+      showToast(t("agent.cleanFailed", { msg: result.error }), "error");
+    } else if (result.pendingActions && result.pendingActions.length > 0) {
+      pendingAgentActions = result.pendingActions;
+      renderAgentPanel();
+      showToast(t("agent.cleanPending", { n: result.pendingActions.length }), "success");
+    } else {
+      showToast(t("agent.cleanNothing"), "success");
+    }
+  } catch (e) {
+    showToast(t("agent.cleanFailed", { msg: e.message || e }), "error");
+  } finally {
+    agentBusy = false;
+    document.getElementById("btnAutoClean").textContent = t("agent.autoClean");
+    document.getElementById("btnAutoClean").disabled = false;
+  }
+}
+
 async function handleAiAnalyze() {
   if (aiBusy) return;
   aiBusy = true;
@@ -536,6 +637,10 @@ async function handleAiAnalyze() {
       document.getElementById("aiKeywords").innerHTML =
         kwHtml || '<span style="color:var(--text3);font-size:12px">-</span>';
       showToast(t("ai.analyzed", { n: result.recordsAnalyzed }), "success");
+      if (result.pendingActions > 0) {
+        pendingAgentActions = await window.electronAPI.agentGetPending();
+        renderAgentPanel();
+      }
     }
   } catch (e) {
     document.getElementById("aiError").textContent =
@@ -634,6 +739,8 @@ async function init() {
     locale.code = loc.code;
     locale.data = loc.data;
     await refreshStats();
+    pendingAgentActions = await window.electronAPI.agentGetPending();
+    await refreshAgentProfile();
   } catch (e) {
     console.error("Init error:", e);
   }
@@ -873,6 +980,31 @@ document.getElementById("btnClearRecs").addEventListener("click", async function
   showToast(t("toast.recsCleared"), "success");
 });
 
+// Agent actions
+document.getElementById("btnAutoClean").addEventListener("click", handleAutoClean);
+
+document.getElementById("agentPendingActions").addEventListener("click", async function (e) {
+  var approveBtn = e.target.closest("[data-action='agent-approve']");
+  var dismissBtn = e.target.closest("[data-action='agent-dismiss']");
+
+  if (approveBtn) {
+    var id = approveBtn.dataset.id;
+    e.stopPropagation();
+    await window.electronAPI.agentApproveActions([id]);
+    pendingAgentActions = await window.electronAPI.agentGetPending();
+    renderAgentPanel();
+    showToast(t("agent.actionApproved"), "success");
+  }
+
+  if (dismissBtn) {
+    var id = dismissBtn.dataset.id;
+    e.stopPropagation();
+    await window.electronAPI.agentDismissActions([id]);
+    pendingAgentActions = await window.electronAPI.agentGetPending();
+    renderAgentPanel();
+  }
+});
+
 document.getElementById("aiPanel").addEventListener("click", function (e) {
   var acceptBtn = e.target.closest("[data-action='rec-accept']");
   var rejectBtn = e.target.closest("[data-action='rec-reject']");
@@ -1088,6 +1220,9 @@ window.electronAPI.onUpdate(function (data) {
         renderRecords();
       }
     }
+  } else if (data.type === "agentPendingUpdated") {
+    pendingAgentActions = data.actions || [];
+    renderAgentPanel();
   }
 });
 

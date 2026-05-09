@@ -94,5 +94,19 @@
   "confirm.clearAll": "Clear all browsing records? This cannot be undone.",
   "confirm.batchDelete": "Delete {n} selected records?",
 
+  "agent.title": "🧠 Agent Actions",
+  "agent.autoClean": "Auto-Clean",
+  "agent.profileAnti": "Anti-patterns",
+  "agent.approve": "Approve",
+  "agent.dismiss": "Dismiss",
+  "agent.actionDelete": "Delete {n} records",
+  "agent.actionRegex": "Update regex for {domain}",
+  "agent.actionScore": "Set score to {score}",
+  "agent.actionAdd": "Add \"{title}\"",
+  "agent.cleanPending": "Agent found {n} items to clean. Review and approve below.",
+  "agent.cleanNothing": "Agent found nothing to clean. Your data looks tidy!",
+  "agent.cleanFailed": "Auto-clean failed: {msg}",
+  "agent.actionApproved": "Action approved and executed",
+
   "lang.selector": "🌐 Language"
 }

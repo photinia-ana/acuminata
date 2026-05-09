@@ -94,5 +94,19 @@
   "confirm.clearAll": "确认清空所有浏览记录？此操作不可撤销。",
   "confirm.batchDelete": "确认删除选中的 {n} 条记录吗？",
 
+  "agent.title": "🧠 智能代理",
+  "agent.autoClean": "自动清理",
+  "agent.profileAnti": "已识别的负面模式",
+  "agent.approve": "批准",
+  "agent.dismiss": "忽略",
+  "agent.actionDelete": "删除 {n} 条记录",
+  "agent.actionRegex": "更新 {domain} 的正则规则",
+  "agent.actionScore": "将评分设为 {score}",
+  "agent.actionAdd": "添加 \"{title}\"",
+  "agent.cleanPending": "Agent 发现 {n} 项待清理内容，请在下方审核批准。",
+  "agent.cleanNothing": "Agent 未发现需要清理的内容，数据看起来很整洁！",
+  "agent.cleanFailed": "自动清理失败: {msg}",
+  "agent.actionApproved": "操作已批准执行",
+
   "lang.selector": "🌐 语言 / Language"
 }
