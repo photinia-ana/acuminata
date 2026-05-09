@@ -9,7 +9,17 @@ let totalRecords = 0;
 let loadedAll = false;
 let stats = null;
 let wsConnected = false;
-let selectedIds = new Set(); // 新增：保存当前选中的记录 ID
+let selectedIds = new Set();
+let aiAnalysisResult = null;
+let recommendations = [];
+let aiConfig = {
+  provider: "ollama",
+  endpoint: "http://127.0.0.1:11434",
+  apiKey: "",
+  model: "qwen2.5:7b",
+};
+let aiConnected = false;
+let aiBusy = false;
 
 function formatTime(ts) {
   const d = new Date(ts);
@@ -174,6 +184,18 @@ function groupByDate(list) {
 
 function renderRecords() {
   var container = document.getElementById("recordsContainer");
+  var aiPanel = document.getElementById("aiPanel");
+
+  if (activeFilter === "recommend") {
+    container.style.display = "none";
+    aiPanel.classList.add("active");
+    renderAiPanel();
+    return;
+  }
+
+  container.style.display = "block";
+  aiPanel.classList.remove("active");
+
   var filtered = getFilteredRecords();
 
   if (filtered.length === 0) {
@@ -299,8 +321,14 @@ function renderFilterBar() {
   var counts = (stats && stats.domainCounts) || {};
   var domains = Object.keys(counts);
 
-  // 修改：在这里强行推入一个 Pinned 的芯片
   var chips = [
+    '<div class="filter-chip' +
+      (activeFilter === "recommend" ? " active" : "") +
+      '" data-domain="recommend" style="' +
+      (activeFilter === "recommend"
+        ? "background: linear-gradient(135deg, var(--accent), var(--accent2));border-color: transparent;color: #fff;"
+        : "background: linear-gradient(135deg, rgba(91,141,238,0.1), rgba(232,93,138,0.1));border-color: rgba(91,141,238,0.3);") +
+      '">✨ 智能推荐</div>',
     '<div class="filter-chip' +
       (activeFilter === "all" ? " active" : "") +
       '" data-domain="all">全部</div>',
@@ -335,8 +363,201 @@ function renderFilterBar() {
   bar.innerHTML = chips.join("");
 }
 
+function renderAiPanel() {
+  document.getElementById("aiProvider").value = aiConfig.provider;
+  document.getElementById("aiEndpoint").value = aiConfig.endpoint;
+  document.getElementById("aiModel").value = aiConfig.model;
+  var apiKeyInput = document.getElementById("aiApiKey");
+  var apiKeyRow = document.getElementById("aiApiKeyRow");
+  if (aiConfig.provider === "ollama") {
+    apiKeyRow.style.display = "none";
+    apiKeyInput.value = "";
+  } else {
+    apiKeyRow.style.display = "flex";
+    apiKeyInput.value = aiConfig.apiKey || "";
+  }
+  var ind = document.getElementById("aiIndicator");
+  ind.className = "pc-indicator " + (aiConnected ? "ok" : "err");
+
+  if (aiBusy) {
+    document.getElementById("aiLoading").classList.add("active");
+    document.getElementById("aiTriggerArea").style.display = "none";
+    document.getElementById("aiResult").classList.remove("active");
+  } else {
+    document.getElementById("aiLoading").classList.remove("active");
+  }
+
+  if (aiAnalysisResult) {
+    document.getElementById("aiTriggerArea").style.display = "none";
+    document.getElementById("aiResult").classList.add("active");
+    document.getElementById("aiSummary").textContent =
+      aiAnalysisResult.summary || "";
+    var kwHtml = (aiAnalysisResult.keywords || [])
+      .map(function (k) {
+        return '<span class="ai-keyword-tag">' + escapeHtml(k) + "</span>";
+      })
+      .join("");
+    document.getElementById("aiKeywords").innerHTML =
+      kwHtml || '<span style="color:var(--text3);font-size:12px">-</span>';
+  } else {
+    document.getElementById("aiTriggerArea").style.display = "block";
+    document.getElementById("aiResult").classList.remove("active");
+  }
+
+  loadRecommendations();
+}
+
+async function loadRecommendations() {
+  try {
+    recommendations = await window.electronAPI.getRecommendations();
+    var filtered = recommendations.filter(function (r) {
+      return r.status === 0;
+    });
+    renderRecommendations(filtered);
+  } catch (e) {
+    console.error("Load recommendations error:", e);
+  }
+}
+
+function renderRecommendations(list) {
+  var section = document.getElementById("aiRecsSection");
+  var container = document.getElementById("aiRecsContainer");
+
+  if (list.length === 0) {
+    section.classList.remove("active");
+    container.innerHTML = "";
+    return;
+  }
+
+  section.classList.add("active");
+  container.innerHTML = list
+    .map(function (r) {
+      return (
+        '<div class="rec-card" data-url="' +
+        encodeURIComponent(r.url) +
+        '">' +
+        '<div class="rec-card-icon">💡</div>' +
+        '<div class="rec-card-body">' +
+        '<div class="rec-card-title">' +
+        escapeHtml(r.title) +
+        "</div>" +
+        '<div class="rec-card-meta">' +
+        escapeHtml(r.url) +
+        " · " +
+        escapeHtml(r.groupLabel) +
+        "</div>" +
+        (r.reason
+          ? '<div class="rec-card-reason">' + escapeHtml(r.reason) + "</div>"
+          : "") +
+        "</div>" +
+        '<div class="rec-card-actions">' +
+        '<button class="rec-btn-accept" data-action="rec-accept" data-id="' +
+        r.id +
+        '">✅</button>' +
+        '<button class="rec-btn-reject" data-action="rec-reject" data-id="' +
+        r.id +
+        '">❌</button>' +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+}
+
+async function handleAiAnalyze() {
+  if (aiBusy) return;
+  aiBusy = true;
+
+  document.getElementById("aiError").classList.remove("active");
+  document.getElementById("aiTriggerArea").style.display = "none";
+  document.getElementById("aiLoading").classList.add("active");
+  document.getElementById("aiResult").classList.remove("active");
+
+  try {
+    var result = await window.electronAPI.triggerAgentAnalysis();
+    if (result.error) {
+      document.getElementById("aiError").textContent = result.error;
+      document.getElementById("aiError").classList.add("active");
+      document.getElementById("aiTriggerArea").style.display = "block";
+    } else {
+      aiAnalysisResult = result;
+      document.getElementById("aiResult").classList.add("active");
+      document.getElementById("aiSummary").textContent =
+        result.summary || "";
+      var kwHtml = (result.keywords || [])
+        .map(function (k) {
+          return '<span class="ai-keyword-tag">' + escapeHtml(k) + "</span>";
+        })
+        .join("");
+      document.getElementById("aiKeywords").innerHTML =
+        kwHtml || '<span style="color:var(--text3);font-size:12px">-</span>';
+      showToast(
+        "AI 分析完成，基于 " + result.recordsAnalyzed + " 条高价值记录",
+        "success",
+      );
+    }
+  } catch (e) {
+    document.getElementById("aiError").textContent =
+      "分析失败: " + (e.message || e);
+    document.getElementById("aiError").classList.add("active");
+    document.getElementById("aiTriggerArea").style.display = "block";
+  } finally {
+    aiBusy = false;
+    document.getElementById("aiLoading").classList.remove("active");
+  }
+}
+
+async function handleTestAi() {
+  saveAiConfig();
+  var btn = document.getElementById("btnTestAi");
+  var ind = document.getElementById("aiIndicator");
+  btn.textContent = "测试中...";
+  btn.disabled = true;
+  try {
+    var result = await window.electronAPI.testAiConnection();
+    aiConnected = result.ok;
+    ind.className = "pc-indicator " + (result.ok ? "ok" : "err");
+    var providerName = { ollama: "Ollama", openai: "OpenAI", anthropic: "Anthropic", minimax: "MiniMax" }[result.provider] || result.provider;
+    if (result.ok) {
+      showToast(providerName + " 连接正常", "success");
+    } else {
+      showToast("连接失败: " + (result.error || "未知错误"), "error");
+    }
+  } catch (e) {
+    aiConnected = false;
+    ind.className = "pc-indicator err";
+    showToast("连接失败: " + (e.message || e), "error");
+  } finally {
+    btn.textContent = "测试连接";
+    btn.disabled = false;
+  }
+}
+
+function saveAiConfig() {
+  var provider = document.getElementById("aiProvider").value;
+  var endpoint = document.getElementById("aiEndpoint").value.trim();
+  var model = document.getElementById("aiModel").value.trim();
+  var apiKey = document.getElementById("aiApiKey").value;
+  aiConfig.provider = provider;
+  aiConfig.endpoint = endpoint;
+  aiConfig.model = model;
+  if (apiKey && !apiKey.startsWith("••••")) {
+    aiConfig.apiKey = apiKey;
+  }
+  window.electronAPI.setAiConfig({
+    provider: provider,
+    endpoint: endpoint,
+    apiKey: apiKey,
+    model: model,
+  });
+}
+
 async function loadRecords(page, filter) {
   var f = filter !== undefined ? filter : activeFilter;
+  if (f === "recommend") {
+    renderRecords();
+    return;
+  }
   var result = await window.electronAPI.getRecordsPage(page, pageSize, f);
   if (page === 1) {
     records = result.records;
@@ -363,6 +584,11 @@ async function init() {
 
   try {
     watchlist = await window.electronAPI.getWatchlist();
+    var cfg = await window.electronAPI.getAiConfig();
+    aiConfig.provider = cfg.provider || "ollama";
+    aiConfig.endpoint = cfg.endpoint || "http://127.0.0.1:11434";
+    aiConfig.apiKey = cfg.apiKey || "";
+    aiConfig.model = cfg.model || "qwen2.5:7b";
     await refreshStats();
   } catch (e) {
     console.error("Init error:", e);
@@ -424,6 +650,17 @@ document
     var chip = e.target.closest(".filter-chip");
     if (chip) {
       activeFilter = chip.dataset.domain;
+      if (activeFilter === "recommend") {
+        searchQuery = "";
+        searchInput.value = "";
+        searchClear.classList.remove("visible");
+        document.getElementById("searchBox").style.display = "none";
+        document.getElementById("btnBatchDelete").style.display = "none";
+        selectedIds.clear();
+      } else {
+        document.getElementById("searchBox").style.display = "flex";
+        updateBatchDeleteBtn();
+      }
       renderFilterBar();
       await loadRecords(1);
     }
@@ -540,6 +777,104 @@ searchClear.addEventListener("click", function () {
   searchClear.classList.remove("visible");
   renderRecords();
   document.getElementById("recordsScroll").scrollTop = 0;
+});
+
+// ── AI panel event listeners ──
+
+document.getElementById("btnAiAnalyze").addEventListener("click", handleAiAnalyze);
+
+document.getElementById("btnTestAi").addEventListener("click", handleTestAi);
+
+document.getElementById("aiProvider").addEventListener("change", function () {
+  var provider = this.value;
+  var apiKeyRow = document.getElementById("aiApiKeyRow");
+  var endpointInput = document.getElementById("aiEndpoint");
+  var modelInput = document.getElementById("aiModel");
+  var apiKeyInput = document.getElementById("aiApiKey");
+  var defaults = {
+    ollama: { endpoint: "http://127.0.0.1:11434", model: "qwen2.5:7b" },
+    openai: { endpoint: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+    anthropic: { endpoint: "https://api.anthropic.com/v1", model: "claude-sonnet-4-20250514" },
+    minimax: { endpoint: "https://api.minimaxi.com/anthropic", model: "MiniMax-M2.5" },
+  };
+  if (provider === "ollama") {
+    apiKeyRow.style.display = "none";
+    apiKeyInput.value = "";
+  } else {
+    apiKeyRow.style.display = "flex";
+  }
+  var d = defaults[provider];
+  if (d) {
+    endpointInput.value = d.endpoint;
+    modelInput.value = d.model;
+  }
+  aiConnected = false;
+  document.getElementById("aiIndicator").className = "pc-indicator err";
+  saveAiConfig();
+});
+
+document.getElementById("aiEndpoint").addEventListener("change", saveAiConfig);
+document.getElementById("aiModel").addEventListener("change", saveAiConfig);
+document.getElementById("aiApiKey").addEventListener("change", saveAiConfig);
+
+document.getElementById("btnClearRecs").addEventListener("click", async function () {
+  if (!confirm("确认清空所有推荐内容？")) return;
+  await window.electronAPI.clearRecommendations();
+  recommendations = [];
+  renderRecommendations([]);
+  showToast("已清空推荐列表", "success");
+});
+
+document.getElementById("aiPanel").addEventListener("click", function (e) {
+  var acceptBtn = e.target.closest("[data-action='rec-accept']");
+  var rejectBtn = e.target.closest("[data-action='rec-reject']");
+
+  if (acceptBtn || rejectBtn) {
+    e.stopPropagation();
+    var id = (acceptBtn || rejectBtn).dataset.id;
+
+    if (acceptBtn) {
+      window.electronAPI
+        .acceptRecommendation(id)
+        .then(function (record) {
+          if (record) {
+            recommendations = recommendations.filter(function (r) {
+              return r.id !== id;
+            });
+            var filtered = recommendations.filter(function (r) {
+              return r.status === 0;
+            });
+            renderRecommendations(filtered);
+            showToast("已转入收藏", "success");
+          }
+        })
+        .catch(function (e) {
+          showToast("操作失败", "error");
+        });
+    } else {
+      window.electronAPI
+        .rejectRecommendation(id)
+        .then(function () {
+          recommendations = recommendations.filter(function (r) {
+            return r.id !== id;
+          });
+          var filtered = recommendations.filter(function (r) {
+            return r.status === 0;
+          });
+          renderRecommendations(filtered);
+        })
+        .catch(function (e) {
+          showToast("操作失败", "error");
+        });
+    }
+    return;
+  }
+
+  var card = e.target.closest(".rec-card");
+  if (card) {
+    var url = decodeURIComponent(card.dataset.url);
+    window.electronAPI.openUrl(url);
+  }
 });
 
 // ── Actions ──

@@ -21,4 +21,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onWatchlistUpdate: (callback) =>
     ipcRenderer.on("watchlist-update", (_, data) => callback(data)),
   openUrl: (url) => ipcRenderer.invoke("open-url", url),
+  triggerAgentAnalysis: () => ipcRenderer.invoke("trigger-agent-analysis"),
+  getRecommendations: () => ipcRenderer.invoke("get-recommendations"),
+  rejectRecommendation: (id) => ipcRenderer.invoke("reject-recommendation", id),
+  acceptRecommendation: (id) => ipcRenderer.invoke("accept-recommendation", id),
+  clearRecommendations: () => ipcRenderer.invoke("clear-recommendations"),
+  getAiConfig: () => ipcRenderer.invoke("get-ai-config"),
+  setAiConfig: (config) => ipcRenderer.invoke("set-ai-config", config),
+  testAiConnection: () => ipcRenderer.invoke("test-ai-connection"),
 });

@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const http = require("http");
+const https = require("https");
 const WebSocket = require("ws");
 const initSqlJs = require("sql.js");
 
@@ -12,6 +14,12 @@ let extensionServer;
 let extensionClients = new Set();
 let watchlist = [{ domain: "bilibili.com", label: "B站", color: "#fb7299" }];
 let enabled = true;
+let aiConfig = {
+  provider: "ollama",
+  endpoint: "http://127.0.0.1:11434",
+  apiKey: "",
+  model: "qwen2.5:7b",
+};
 let db;
 let saveTimer = null;
 
@@ -122,6 +130,16 @@ async function initDatabase() {
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS recommendations (
+    id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    groupLabel TEXT NOT NULL,
+    reason TEXT,
+    status INTEGER DEFAULT 0,
+    createdAt INTEGER NOT NULL
+  )`);
   markDirty();
 }
 
@@ -154,6 +172,22 @@ function loadSettings() {
       "true",
     ]);
   }
+  const aiProvider = dbGet("SELECT value FROM settings WHERE key = ?", [
+    "ai.provider",
+  ]);
+  const aiEndpoint = dbGet("SELECT value FROM settings WHERE key = ?", [
+    "ai.endpoint",
+  ]);
+  const aiApiKey = dbGet("SELECT value FROM settings WHERE key = ?", [
+    "ai.apiKey",
+  ]);
+  const aiModel = dbGet("SELECT value FROM settings WHERE key = ?", [
+    "ai.model",
+  ]);
+  if (aiProvider) aiConfig.provider = aiProvider.value;
+  if (aiEndpoint) aiConfig.endpoint = aiEndpoint.value;
+  if (aiApiKey) aiConfig.apiKey = aiApiKey.value;
+  if (aiModel) aiConfig.model = aiModel.value;
 }
 
 function broadcastToExtensions(data) {
@@ -739,6 +773,340 @@ ipcMain.handle("toggle-record-pin", (_, id, pinned, score) => {
     broadcastToExtensions({ type: "recordUpdated", record });
   }
   return !!record;
+});
+
+function httpRequestJson(urlObj, method, headers, body, timeout) {
+  const transport = urlObj.protocol === "https:" ? https : http;
+  const urlStr = urlObj.toString();
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === "https:" ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: method,
+      headers: Object.assign(
+        { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+        headers,
+      ),
+      timeout: timeout || 60000,
+    };
+    const req = transport.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        if (res.statusCode >= 400) {
+          reject(new Error("HTTP " + res.statusCode + " → " + urlStr + " : " + data.slice(0, 200)));
+          return;
+        }
+        resolve({ status: res.statusCode, data });
+      });
+    });
+    req.on("error", (e) => reject(new Error(e.message + " → " + urlStr)));
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("请求超时 → " + urlStr));
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+function callOllama(prompt) {
+  const url = new URL("/api/generate", aiConfig.endpoint.replace(/\/+$/, ""));
+
+  function request(withFormat) {
+    const body = { model: aiConfig.model, prompt, stream: false };
+    if (withFormat) body.format = "json";
+    return httpRequestJson(url, "POST", {}, JSON.stringify(body));
+  }
+
+  function parseResponse(data) {
+    let result;
+    try { result = JSON.parse(data); }
+    catch (e) {
+      console.error("Ollama: failed to parse response:", data.slice(0, 500));
+      throw new Error("Ollama 返回了非 JSON 数据，请检查 Ollama 是否在运行");
+    }
+    if (result.error) throw new Error(typeof result.error === "string" ? result.error : JSON.stringify(result.error));
+    return result.response || data;
+  }
+
+  return request(true).then(({ data }) => parseResponse(data), (err) => {
+    if (err.message && err.message.includes("format")) {
+      console.error("Ollama: format=json failed, retrying without format");
+      return request(false).then(({ data }) => parseResponse(data));
+    }
+    throw err;
+  });
+}
+
+function callOpenAI(prompt) {
+  const base = aiConfig.endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const url = new URL(base + "/v1/chat/completions");
+  const body = JSON.stringify({
+    model: aiConfig.model,
+    messages: [
+      { role: "system", content: "You are a content recommendation expert. Always respond with valid JSON only, no markdown fences." },
+      { role: "user", content: prompt },
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.7,
+  });
+  return httpRequestJson(url, "POST", { Authorization: "Bearer " + aiConfig.apiKey }, body).then(
+    ({ status, data }) => {
+      let result;
+      try { result = JSON.parse(data); }
+      catch (e) {
+        console.error("OpenAI: failed to parse response, status:", status, data.slice(0, 500));
+        throw new Error("OpenAI API 返回了非 JSON 数据 (HTTP " + status + ")");
+      }
+      if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
+      if (!result.choices || !result.choices[0]) throw new Error("OpenAI 返回数据缺少 choices");
+      return result.choices[0].message.content;
+    },
+  );
+}
+
+function callAnthropic(prompt) {
+  const base = aiConfig.endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const url = new URL(base + "/v1/messages");
+  const body = JSON.stringify({
+    model: aiConfig.model,
+    max_tokens: 1024,
+    system: "You are a content recommendation expert. Always respond with valid JSON only, no markdown fences.",
+    messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+  });
+  return httpRequestJson(
+    url,
+    "POST",
+    { "x-api-key": aiConfig.apiKey, "anthropic-version": "2023-06-01" },
+    body,
+  ).then(({ status, data }) => {
+    let result;
+    try { result = JSON.parse(data); }
+    catch (e) {
+      console.error("Anthropic: failed to parse response, status:", status, data.slice(0, 500));
+      throw new Error("Anthropic API 返回了非 JSON 数据 (HTTP " + status + ")");
+    }
+    if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
+    if (result.content) {
+      for (const block of result.content) {
+        if (block.type === "text" && block.text != null) return block.text;
+      }
+    }
+    throw new Error("Anthropic 返回数据缺少 text content");
+  });
+}
+
+function callAI(prompt) {
+  switch (aiConfig.provider) {
+    case "openai":
+      return callOpenAI(prompt);
+    case "anthropic":
+    case "minimax":
+      return callAnthropic(prompt);
+    default:
+      return callOllama(prompt);
+  }
+}
+
+function extractHighValueRecords() {
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  let rows = dbAll(
+    "SELECT * FROM records WHERE (pinned = 1 OR score > 0) AND timestamp >= ? ORDER BY score DESC, timestamp DESC LIMIT 50",
+    [thirtyDaysAgo],
+  );
+  if (rows.length < 10) {
+    rows = dbAll(
+      "SELECT * FROM records WHERE timestamp >= ? ORDER BY pinned DESC, score DESC, timestamp DESC LIMIT 50",
+      [thirtyDaysAgo],
+    );
+  }
+  return rows;
+}
+
+function buildAnalysisPrompt(records) {
+  const ruleToLabel = {};
+  watchlist.forEach((w) => {
+    ruleToLabel[w.domain] = w.label || w.domain;
+  });
+
+  const recordItems = records.map((r) => {
+    const label = ruleToLabel[r.matchedRule] || r.matchedRule;
+    const title = (r.title || "").slice(0, 80);
+    const score = r.score || 0;
+    const pinned = r.pinned ? "★" : "";
+    return `- [${label}] ${title} (分数:${score} ${pinned})`;
+  });
+
+  const patterns = [];
+  watchlist.forEach((w) => {
+    if (w.regexFilter && w.regexFilter.trim()) {
+      patterns.push(
+        `  - ${w.label || w.domain}: ${w.regexFilter} (${w.regexTarget})`,
+      );
+    }
+  });
+
+  return (
+    "你是一个私人的内容推荐专家。以下是我近期高分收藏的视频记录：\n" +
+    recordItems.join("\n") +
+    "\n\n" +
+    (patterns.length > 0
+      ? "我关注的内容模式（正则匹配规则）：\n" + patterns.join("\n") + "\n\n"
+      : "") +
+    "请执行以下任务：\n" +
+    " 1. 用一句话总结我的内容偏好。\n" +
+    " 2. 推测 5 个我目前还未看过，但极大概率会感兴趣的相关系列、标签或具体搜索关键词。\n" +
+    '   请严格按照 JSON 格式返回结果：{ "summary": "...", "keywords": ["...", "..."] }'
+  );
+}
+
+ipcMain.handle("get-ai-config", () => {
+  return {
+    provider: aiConfig.provider,
+    endpoint: aiConfig.endpoint,
+    apiKey: aiConfig.apiKey ? "••••" + aiConfig.apiKey.slice(-4) : "",
+    model: aiConfig.model,
+  };
+});
+
+ipcMain.handle("set-ai-config", (_, config) => {
+  if (config.provider !== undefined) {
+    aiConfig.provider = config.provider;
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [
+      "ai.provider",
+      config.provider,
+    ]);
+  }
+  if (config.endpoint !== undefined) {
+    aiConfig.endpoint = config.endpoint;
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [
+      "ai.endpoint",
+      config.endpoint,
+    ]);
+  }
+  if (config.apiKey !== undefined) {
+    if (config.apiKey && !config.apiKey.startsWith("••••")) {
+      aiConfig.apiKey = config.apiKey;
+      dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [
+        "ai.apiKey",
+        config.apiKey,
+      ]);
+    }
+  }
+  if (config.model !== undefined) {
+    aiConfig.model = config.model;
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [
+      "ai.model",
+      config.model,
+    ]);
+  }
+});
+
+function extractJson(text) {
+  if (!text || typeof text !== "string") return null;
+  // strip markdown code fences
+  let s = text;
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) s = fence[1];
+  // find the outermost balanced JSON object
+  let start = s.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let end = -1;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\" && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) return null;
+  return s.slice(start, end + 1);
+}
+
+ipcMain.handle("trigger-agent-analysis", async () => {
+  try {
+    const records = extractHighValueRecords();
+    if (records.length === 0) {
+      return { error: "暂无足够的高价值记录用于分析，请先收藏或打分一些记录。" };
+    }
+    const prompt = buildAnalysisPrompt(records);
+    const response = await callAI(prompt);
+    if (!response || typeof response !== "string") {
+      console.error("callAI returned non-string:", typeof response, JSON.stringify(response).slice(0, 300));
+      return { error: "AI 返回了空响应，请检查 API 配置或切换 Provider" };
+    }
+    const jsonStr = extractJson(response);
+    if (!jsonStr) {
+      console.error("No JSON found in response:", response.slice(0, 500));
+      return { error: "AI 未返回有效的 JSON 格式数据" };
+    }
+    const analysis = JSON.parse(jsonStr);
+    return {
+      summary: analysis.summary || "",
+      keywords: analysis.keywords || [],
+      recordsAnalyzed: records.length,
+    };
+  } catch (e) {
+    console.error("Agent analysis error:", e);
+    return { error: "AI 分析失败: " + (e.message || e) };
+  }
+});
+
+ipcMain.handle("get-recommendations", () => {
+  return dbAll(
+    "SELECT * FROM recommendations ORDER BY createdAt DESC LIMIT 200",
+  );
+});
+
+ipcMain.handle("reject-recommendation", (_, id) => {
+  dbRun("UPDATE recommendations SET status = -1 WHERE id = ?", [id]);
+  return true;
+});
+
+ipcMain.handle("accept-recommendation", (_, id) => {
+  const rec = dbGet("SELECT * FROM recommendations WHERE id = ?", [id]);
+  if (!rec) return false;
+  dbRun("UPDATE recommendations SET status = 1 WHERE id = ?", [id]);
+  const now = Date.now();
+  const record = {
+    id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+    url: rec.url,
+    title: rec.title,
+    domain: rec.domain,
+    matchedRule: rec.groupLabel,
+    tabId: 0,
+    timestamp: now,
+  };
+  dbRun(
+    "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)",
+    [record.id, record.url, record.title, record.domain, record.matchedRule, record.tabId, record.timestamp, now, now],
+  );
+  broadcastToExtensions({ type: "recordAdded", record });
+  return record;
+});
+
+ipcMain.handle("clear-recommendations", () => {
+  dbRun("DELETE FROM recommendations");
+  return true;
+});
+
+ipcMain.handle("test-ai-connection", async () => {
+  try {
+    const response = await callAI("回复一个字：好。Reply with one word: OK.");
+    return { ok: true, response, provider: aiConfig.provider };
+  } catch (e) {
+    return { ok: false, error: e.message, provider: aiConfig.provider };
+  }
 });
 
 module.exports = { app };
