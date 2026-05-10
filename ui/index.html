@@ -2,1597 +2,663 @@
 <html lang="zh-CN">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta
-            http-equiv="Content-Security-Policy"
-            content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src ws://127.0.0.1:8766 ws://localhost:8766"
-        />
-        <title>Acuminata</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <title>Site History Tracker - Agent</title>
         <link
-            href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
             rel="stylesheet"
         />
         <style>
             :root {
-                --bg: #0b0d12;
-                --surface: #13161e;
-                --surface2: #1b1f2b;
-                --border: #252a38;
-                --border2: #2e3345;
-                --accent: #5b8dee;
-                --accent2: #e85d8a;
-                --text: #e4e8f5;
-                --text2: #7a80a0;
-                --text3: #4a5070;
-                --success: #52c97a;
-                --danger: #e85d5d;
-                --warning: #f0a040;
-                --mono: "JetBrains Mono", monospace;
-                --sans: "Noto Sans SC", sans-serif;
+                --background: #000000;
+                --foreground: #fafafa;
+                --muted: #18181b;
+                --muted-fg: #a1a1aa;
+                --border: #27272a;
+                --accent: #1d1d20;
+                --primary: #fafafa;
+                --primary-fg: #18181b;
+                --danger: #ef4444;
+                --warning: #f59e0b;
+                --radius: 8px;
+                --font-sans: "Inter", system-ui, sans-serif;
+                --font-mono: "JetBrains Mono", monospace;
             }
-
             * {
                 box-sizing: border-box;
                 margin: 0;
                 padding: 0;
             }
-
             body {
-                background: var(--bg);
-                color: var(--text);
-                font-family: var(--sans);
-                font-size: 13px;
-                line-height: 1.5;
-                overflow: hidden;
+                background: var(--background);
+                color: var(--foreground);
+                font-family: var(--font-sans);
+                font-size: 14px;
                 height: 100vh;
-                user-select: none;
+                display: flex;
+                overflow: hidden;
             }
 
-            .app {
+            /* --- Sidebar --- */
+            .sidebar {
+                width: 260px;
+                border-right: 1px solid var(--border);
                 display: flex;
                 flex-direction: column;
-                height: 100vh;
+                padding: 24px 12px;
+                background: #000;
+                -webkit-app-region: drag;
+            }
+            .logo {
+                font-weight: 600;
+                font-size: 16px;
+                padding: 0 12px 32px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                -webkit-app-region: no-drag;
+            }
+            .nav-menu {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                -webkit-app-region: no-drag;
+            }
+            .nav-item {
+                padding: 10px 12px;
+                border-radius: var(--radius);
+                cursor: pointer;
+                color: var(--muted-fg);
+                font-weight: 500;
+                font-size: 13px;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .nav-item:hover {
+                background: var(--accent);
+                color: var(--foreground);
+            }
+            .nav-item.active {
+                background: var(--muted);
+                color: var(--foreground);
+            }
+            .ws-status {
+                margin-top: auto;
+                padding: 12px;
+                font-family: var(--font-mono);
+                font-size: 11px;
+                color: var(--muted-fg);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                -webkit-app-region: no-drag;
+            }
+            .ws-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #3f3f46;
+            }
+            .ws-dot.on {
+                background: #10b981;
+                box-shadow: 0 0 8px #10b981;
             }
 
-            /* ── header ── */
-            header {
+            /* --- Content --- */
+            .main-content {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                position: relative;
+            }
+            .tab-panel {
+                display: none;
+                padding: 40px;
+                height: 100%;
+                overflow-y: auto;
+            }
+            .tab-panel.active {
+                display: block;
+            }
+            h2 {
+                font-size: 24px;
+                font-weight: 600;
+                letter-spacing: -0.05em;
+                margin-bottom: 24px;
+            }
+
+            /* --- Cards & Metrics --- */
+            .grid-metrics {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 16px;
+                margin-bottom: 32px;
+            }
+            .card {
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 20px;
+                background: #050505;
+            }
+            .metric-title {
+                font-size: 13px;
+                color: var(--muted-fg);
+                font-weight: 500;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 12px 20px;
-                border-bottom: 1px solid var(--border);
-                background: var(--surface);
-                flex-shrink: 0;
-                -webkit-app-region: drag;
+            }
+            .metric-value {
+                font-size: 28px;
+                font-weight: 600;
+                margin-top: 8px;
+                font-family: var(--font-mono);
             }
 
-            .logo {
+            /* --- History Toolbar --- */
+            .toolbar {
                 display: flex;
-                align-items: center;
                 gap: 12px;
-                -webkit-app-region: no-drag;
-            }
-            .logo-icon {
-                width: 36px;
-                height: 36px;
-                background: linear-gradient(
-                    135deg,
-                    var(--accent),
-                    var(--accent2)
-                );
-                border-radius: 10px;
-                display: flex;
+                margin-bottom: 20px;
                 align-items: center;
-                justify-content: center;
-                font-size: 18px;
             }
-            .logo h1 {
-                font-size: 15px;
-                font-weight: 700;
-                letter-spacing: -0.2px;
-            }
-            .logo .ver {
-                font-size: 10px;
-                color: var(--text3);
-                font-family: var(--mono);
-                margin-left: 6px;
-            }
-
-            .header-right {
-                display: flex;
-                align-items: center;
-                gap: 18px;
-                -webkit-app-region: no-drag;
-            }
-
-            .ws-status {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                font-size: 11px;
-                font-family: var(--mono);
-                color: var(--text3);
-            }
-            .ws-dot {
-                width: 7px;
-                height: 7px;
-                border-radius: 50%;
-                background: var(--text3);
-                transition: background 0.3s;
-            }
-            .ws-dot.on {
-                background: var(--success);
-                box-shadow: 0 0 5px var(--success);
-            }
-            .ws-dot.off {
-                background: var(--danger);
-            }
-
-            .toggle-wrap {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 12px;
-                color: var(--text2);
-            }
-            .tgl {
-                position: relative;
-                width: 38px;
-                height: 22px;
-            }
-            .tgl input {
-                opacity: 0;
-                width: 0;
-                height: 0;
-            }
-            .tgl-slider {
-                position: absolute;
-                inset: 0;
-                background: var(--border);
-                border-radius: 22px;
-                cursor: pointer;
-                transition: 0.2s;
-            }
-            .tgl-slider::before {
-                content: "";
-                position: absolute;
-                width: 16px;
-                height: 16px;
-                left: 3px;
-                top: 3px;
-                background: #fff;
-                border-radius: 50%;
-                transition: 0.2s;
-            }
-            .tgl input:checked + .tgl-slider {
-                background: var(--accent);
-            }
-            .tgl input:checked + .tgl-slider::before {
-                transform: translateX(16px);
-            }
-
-            /* ── main grid ── */
-            .main-grid {
-                display: grid;
-                grid-template-columns: 1fr 320px;
+            .search-input {
                 flex: 1;
-                overflow: hidden;
-            }
-
-            /* ── records panel (left) ── */
-            .records-panel {
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-                border-right: 1px solid var(--border);
-            }
-            .panel-top {
-                padding: 12px 16px;
-                border-bottom: 1px solid var(--border);
-                display: flex;
-                gap: 10px;
-                flex-shrink: 0;
-            }
-            .search-box {
-                flex: 1;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                background: var(--surface);
+                background: #000;
                 border: 1px solid var(--border);
-                border-radius: 8px;
-                padding: 0 12px;
-                transition: border-color 0.2s;
-            }
-            .search-box:focus-within {
-                border-color: var(--accent);
-            }
-            .search-box input {
-                flex: 1;
-                background: none;
-                border: none;
+                border-radius: var(--radius);
+                padding: 8px 14px;
+                color: #fff;
                 outline: none;
-                color: var(--text);
-                font-size: 12px;
-                font-family: var(--sans);
-                padding: 7px 0;
+                font-size: 13px;
             }
-            .search-box input::placeholder {
-                color: var(--text3);
+            .search-input:focus {
+                border-color: var(--muted-fg);
             }
-            .search-icon {
-                color: var(--text3);
-                font-size: 14px;
-            }
-            .search-clear {
-                background: none;
-                border: none;
-                color: var(--text3);
-                cursor: pointer;
-                font-size: 16px;
-                padding: 0 2px;
-                display: none;
-            }
-            .search-clear.visible {
-                display: block;
-            }
-            .search-clear:hover {
-                color: var(--text2);
-            }
-
             .filter-bar {
-                padding: 8px 16px;
                 display: flex;
-                gap: 6px;
-                flex-shrink: 0;
+                gap: 8px;
                 overflow-x: auto;
+                padding-bottom: 8px;
+                margin-bottom: 16px;
             }
             .filter-bar::-webkit-scrollbar {
                 height: 0;
             }
             .filter-chip {
                 padding: 4px 12px;
-                border-radius: 16px;
+                border-radius: 99px;
                 border: 1px solid var(--border);
                 font-size: 11px;
                 cursor: pointer;
+                color: var(--muted-fg);
+                background: #050505;
                 white-space: nowrap;
-                font-family: var(--mono);
-                color: var(--text2);
-                transition: all 0.15s;
-                flex-shrink: 0;
-                background: var(--surface);
-            }
-            .filter-chip:hover {
-                border-color: var(--accent);
             }
             .filter-chip.active {
-                background: var(--accent);
-                border-color: var(--accent);
-                color: #fff;
+                background: var(--primary);
+                color: var(--primary-fg);
+                border-color: var(--primary);
             }
 
-            .records-scroll {
-                flex: 1;
-                overflow-y: auto;
-                overflow-x: hidden;
+            /* --- Data List --- */
+            .data-list {
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                background: #050505;
             }
-            .records-scroll::-webkit-scrollbar {
-                width: 5px;
-            }
-            .records-scroll::-webkit-scrollbar-track {
-                background: transparent;
-            }
-            .records-scroll::-webkit-scrollbar-thumb {
-                background: var(--border2);
-                border-radius: 3px;
-            }
-
-            .date-header {
-                padding: 10px 16px 6px;
+            .date-group-header {
+                padding: 12px 20px;
+                background: #0a0a0a;
                 font-size: 11px;
-                font-family: var(--mono);
-                color: var(--text3);
-                text-transform: uppercase;
-                letter-spacing: 0.8px;
+                font-weight: 600;
+                color: var(--muted-fg);
+                font-family: var(--font-mono);
                 border-bottom: 1px solid var(--border);
-                position: sticky;
-                top: 0;
-                background: var(--bg);
-                z-index: 1;
             }
-
-            .record-item {
-                padding: 10px 16px;
+            .data-item {
                 display: flex;
                 align-items: center;
-                gap: 10px;
-                cursor: pointer;
+                padding: 14px 20px;
+                border-bottom: 1px solid var(--border);
                 transition: background 0.1s;
-                border-bottom: 1px solid rgba(42, 47, 66, 0.4);
+                cursor: pointer;
+                gap: 14px;
             }
-            .record-item:hover {
-                background: var(--surface);
+            .data-item:hover {
+                background: var(--accent);
             }
-            .record-item .rec-dot {
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                flex-shrink: 0;
-            }
-            .record-item .rec-body {
-                flex: 1;
-                min-width: 0;
-            }
-            .record-item .rec-title {
-                font-size: 13px;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            .record-item .rec-meta {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                margin-top: 2px;
-            }
-            .record-item .rec-domain {
-                font-size: 10px;
-                font-family: var(--mono);
-                padding: 1px 6px;
-                border-radius: 3px;
-                background: var(--surface2);
-            }
-            .record-item .rec-time {
-                font-size: 10px;
-                color: var(--text3);
-                font-family: var(--mono);
-            }
-
-            /* ── 列表页显示的网址样式 ── */
-            .record-item .rec-url {
-                font-size: 10px;
-                color: var(--text3);
-                font-family: var(--mono);
-                margin-left: 10px;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 280px; /* 限制最大宽度，防止挤压右侧内容 */
-                display: inline-block;
-                vertical-align: bottom;
-                opacity: 0.5; /* 略微透明，使其不干扰主信息 */
-            }
-
-            /* 鼠标悬停在整行时，让网址稍微清晰一点 */
-            .record-item:hover .rec-url {
-                opacity: 0.8;
-            }
-
-            /* ── 多选复选框 ── */
             .rec-checkbox {
                 appearance: none;
-                width: 14px;
-                height: 14px;
-                border: 1px solid var(--border2);
+                width: 16px;
+                height: 16px;
+                border: 1px solid var(--border);
                 border-radius: 4px;
+                background: #000;
                 cursor: pointer;
-                background: var(--surface2);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: all 0.1s;
+                display: grid;
+                place-content: center;
                 flex-shrink: 0;
-            }
-            .rec-checkbox:hover {
-                border-color: var(--danger);
             }
             .rec-checkbox:checked {
-                background: var(--danger);
-                border-color: var(--danger);
+                background: var(--primary);
+                border-color: var(--primary);
             }
-            .rec-checkbox:checked::after {
-                content: "✓";
-                color: #fff;
-                font-size: 10px;
-                font-weight: bold;
-            }
-
-            .load-more-bar {
-                padding: 10px;
-                text-align: center;
-            }
-            .load-more-bar button {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                color: var(--text2);
-                padding: 6px 20px;
-                border-radius: 8px;
-                font-size: 11px;
-                font-family: var(--mono);
-                cursor: pointer;
-                transition: all 0.15s;
-            }
-            .load-more-bar button:hover {
-                border-color: var(--accent);
-                color: var(--accent);
-            }
-
-            .empty-records {
-                padding: 48px 20px;
-                text-align: center;
-                color: var(--text3);
-            }
-            .empty-records .empty-icon {
-                font-size: 40px;
-                margin-bottom: 10px;
-                opacity: 0.5;
-            }
-            .empty-records .empty-text {
-                font-size: 13px;
-            }
-
-            /* ── 文字版 Pin 按钮 ── */
-            .btn-text-pin {
-                background: transparent;
-                border: 1px solid var(--border);
-                color: var(--text2);
-                padding: 4px 12px;
-                border-radius: 6px;
-                font-size: 11px;
-                font-family: var(--mono);
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.15s;
-                flex-shrink: 0; /* 保证按钮在右侧不会被挤压 */
-            }
-            .btn-text-pin:hover {
-                border-color: var(--accent);
-                color: var(--accent);
-            }
-            .btn-text-pin.on {
-                background: rgba(240, 160, 64, 0.1);
-                border-color: var(--warning);
-                color: var(--warning);
-            }
-
-            /* ── sidebar (right) ── */
-            .sidebar {
-                display: flex;
-                flex-direction: column;
-                overflow-y: auto;
-                gap: 0;
-            }
-            .sidebar::-webkit-scrollbar {
-                width: 5px;
-            }
-            .sidebar::-webkit-scrollbar-track {
-                background: transparent;
-            }
-            .sidebar::-webkit-scrollbar-thumb {
-                background: var(--border2);
-                border-radius: 3px;
-            }
-
-            .stats-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 8px;
-                padding: 12px;
-            }
-            .stat-card {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                padding: 12px 14px;
-            }
-            .stat-card .val {
-                font-family: var(--mono);
-                font-size: 22px;
-                font-weight: 600;
-                color: var(--accent);
-                line-height: 1.1;
-                margin-bottom: 3px;
-            }
-            .stat-card .lbl {
-                font-size: 11px;
-                color: var(--text3);
-            }
-
-            .sidebar-section {
-                border-top: 1px solid var(--border);
-            }
-            .sect-hdr {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 10px 14px;
-                cursor: pointer;
-                font-size: 11px;
-                font-family: var(--mono);
-                color: var(--text2);
-                text-transform: uppercase;
-                letter-spacing: 0.8px;
-                user-select: none;
-            }
-            .sect-hdr:hover {
-                color: var(--text);
-            }
-            .sect-hdr .arrow {
-                transition: transform 0.2s;
+            .rec-checkbox:checked::before {
+                content: "✔";
+                color: #000;
                 font-size: 10px;
             }
-            .sect-hdr.collapsed .arrow {
-                transform: rotate(-90deg);
-            }
-            .sect-body {
-                overflow: hidden;
-            }
-
-            .watchlist-items {
-                padding: 0 12px 8px;
-            }
-            .watch-item {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                padding: 8px 10px;
-                border-radius: 8px;
-                transition: background 0.1s;
-                font-size: 12px;
-            }
-            .watch-item:hover {
-                background: var(--surface);
-            }
-            .watch-item .wd-dot {
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                flex-shrink: 0;
-            }
-            .watch-item .wd-domain {
-                font-family: var(--mono);
-                font-weight: 600;
+            .item-body {
                 flex: 1;
                 min-width: 0;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
             }
-            .watch-item .wd-label {
-                font-size: 10px;
-                color: var(--text3);
-                background: var(--surface2);
-                padding: 2px 6px;
-                border-radius: 4px;
-                flex-shrink: 0;
-            }
-            .watch-item .wd-count {
-                font-family: var(--mono);
-                font-size: 11px;
-                color: var(--accent);
-                flex-shrink: 0;
-                min-width: 36px;
-                text-align: right;
-            }
-            .watch-item .wd-remove {
-                background: none;
-                border: none;
-                color: var(--text3);
-                cursor: pointer;
-                font-size: 14px;
-                padding: 2px;
-                line-height: 1;
-                flex-shrink: 0;
-            }
-            .watch-item .wd-remove:hover {
-                color: var(--danger);
-            }
-
-            /* ── record pin/score ── */
-            .rec-pin {
-                cursor: pointer;
-                font-size: 14px;
-                color: var(--text3);
-                flex-shrink: 0;
-                user-select: none;
-                margin-right: 2px;
-            }
-            .rec-pin.on {
-                color: var(--warning);
-            }
-            .rec-score {
-                display: flex;
-                align-items: center;
-                gap: 1px;
-                flex-shrink: 0;
-                background: var(--surface2);
-                border-radius: 5px;
-                padding: 0 2px;
-            }
-            .rec-sc-btn {
-                background: none;
-                border: none;
-                color: var(--text3);
-                cursor: pointer;
-                font-size: 12px;
-                font-family: var(--mono);
-                padding: 1px 4px;
-                line-height: 1;
-            }
-            .rec-sc-btn:hover {
-                color: var(--text);
-            }
-            .rec-sc-val {
-                font-family: var(--mono);
-                font-size: 11px;
-                color: var(--warning);
-                min-width: 20px;
-                text-align: center;
-            }
-
-            .empty-watchlist {
-                text-align: center;
-                padding: 16px;
-                color: var(--text3);
-                font-size: 12px;
-            }
-
-            .add-form-inline {
-                padding: 8px 14px;
-                display: none;
-            }
-            .add-form-inline.open {
-                display: block;
-            }
-            .add-form-inline .af-row {
-                display: flex;
-                gap: 6px;
-                align-items: end;
-            }
-            .add-form-inline input[type="text"] {
-                flex: 1;
-                background: var(--bg);
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                padding: 6px 8px;
-                color: var(--text);
-                font-family: var(--mono);
-                font-size: 11px;
-                outline: none;
-                min-width: 0;
-            }
-            .add-form-inline input[type="text"]:focus {
-                border-color: var(--accent);
-            }
-            .add-form-inline input[type="color"] {
-                width: 32px;
-                height: 28px;
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                background: var(--bg);
-                cursor: pointer;
-                padding: 2px;
-            }
-            .btn-sm {
-                padding: 6px 12px;
-                border-radius: 6px;
-                border: none;
-                cursor: pointer;
-                font-size: 11px;
-                font-weight: 600;
-                font-family: var(--sans);
-                white-space: nowrap;
-            }
-            .btn-sm.primary {
-                background: var(--accent);
-                color: #fff;
-            }
-            .btn-sm.primary:hover {
-                background: #7aa5f5;
-            }
-            .btn-sm.ghost {
-                background: transparent;
-                color: var(--text2);
-                border: 1px solid var(--border);
-            }
-            .btn-sm.ghost:hover {
-                border-color: var(--accent);
-                color: var(--accent);
-            }
-
-            .sidebar-actions {
-                padding: 12px;
-                display: flex;
-                gap: 8px;
-                border-top: 1px solid var(--border);
-                margin-top: auto;
-            }
-            .btn-act {
-                flex: 1;
-                padding: 8px;
-                border-radius: 8px;
-                border: 1px solid var(--border);
-                background: var(--surface);
-                color: var(--text2);
-                font-size: 12px;
-                cursor: pointer;
-                font-family: var(--sans);
-                transition: all 0.15s;
-                text-align: center;
-            }
-            .btn-act.export {
-                color: var(--success);
-                border-color: rgba(82, 201, 122, 0.3);
-            }
-            .btn-act.export:hover {
-                background: var(--success);
-                color: var(--bg);
-            }
-            .btn-act.clear {
-                color: var(--danger);
-                border-color: rgba(232, 93, 93, 0.3);
-            }
-            .btn-act.clear:hover {
-                background: var(--danger);
-                color: #fff;
-            }
-
-            /* ── toast ── */
-            .toast {
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: var(--surface2);
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                padding: 10px 16px;
-                font-size: 12px;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                transform: translateY(80px);
-                opacity: 0;
-                transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-                z-index: 999;
-                pointer-events: none;
-            }
-            .toast.show {
-                transform: translateY(0);
-                opacity: 1;
-            }
-            .toast.success {
-                border-color: var(--success);
-                color: var(--success);
-            }
-            .toast.error {
-                border-color: var(--danger);
-                color: var(--danger);
-            }
-
-            /* ── AI 智能推荐面板 ── */
-            .ai-panel {
-                padding: 16px;
-                display: none;
-                flex-direction: column;
-                gap: 16px;
-            }
-            .ai-panel.active {
-                display: flex;
-            }
-            .ai-header {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            .ai-header .ai-icon {
-                width: 40px;
-                height: 40px;
-                background: linear-gradient(
-                    135deg,
-                    var(--accent),
-                    var(--accent2)
-                );
-                border-radius: 12px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 20px;
-            }
-            .ai-header .ai-title {
-                font-size: 16px;
-                font-weight: 700;
-            }
-            .ai-header .ai-subtitle {
-                font-size: 11px;
-                color: var(--text3);
-                font-family: var(--mono);
-            }
-
-            .ai-trigger-area {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 12px;
-                padding: 20px;
-                text-align: center;
-            }
-            .btn-ai-trigger {
-                background: linear-gradient(
-                    135deg,
-                    var(--accent),
-                    var(--accent2)
-                );
-                color: #fff;
-                border: none;
-                padding: 12px 32px;
-                border-radius: 10px;
-                font-size: 14px;
-                font-weight: 600;
-                font-family: var(--sans);
-                cursor: pointer;
-                transition:
-                    transform 0.15s,
-                    box-shadow 0.15s;
-            }
-            .btn-ai-trigger:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 4px 16px rgba(91, 141, 238, 0.4);
-            }
-            .btn-ai-trigger:disabled {
-                opacity: 0.5;
-                cursor: not-allowed;
-                transform: none;
-                box-shadow: none;
-            }
-            .ai-trigger-hint {
-                color: var(--text3);
-                font-size: 11px;
-                margin-top: 8px;
-            }
-
-            .ai-loading {
-                display: none;
-                align-items: center;
-                justify-content: center;
-                gap: 12px;
-                padding: 24px;
-                color: var(--text2);
-                font-size: 13px;
-            }
-            .ai-loading.active {
-                display: flex;
-            }
-            .ai-spinner {
-                width: 20px;
-                height: 20px;
-                border: 2px solid var(--border);
-                border-top-color: var(--accent);
-                border-radius: 50%;
-                animation: spin 0.8s linear infinite;
-            }
-            @keyframes spin {
-                to {
-                    transform: rotate(360deg);
-                }
-            }
-
-            .ai-result {
-                display: none;
-                flex-direction: column;
-                gap: 16px;
-            }
-            .ai-result.active {
-                display: flex;
-            }
-
-            .ai-summary-card {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 12px;
-                padding: 16px;
-            }
-            .ai-summary-card .ai-sc-label {
-                font-size: 11px;
-                font-family: var(--mono);
-                color: var(--accent);
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin-bottom: 6px;
-            }
-            .ai-summary-card .ai-sc-text {
-                font-size: 14px;
+            .item-title {
                 font-weight: 500;
-                color: var(--text);
-                line-height: 1.6;
-            }
-
-            .ai-keywords-card {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 12px;
-                padding: 16px;
-            }
-            .ai-keywords-card .ai-kw-label {
-                font-size: 11px;
-                font-family: var(--mono);
-                color: var(--accent2);
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin-bottom: 10px;
-            }
-            .ai-keywords-list {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-            }
-            .ai-keyword-tag {
-                background: rgba(232, 93, 138, 0.1);
-                border: 1px solid rgba(232, 93, 138, 0.3);
-                color: var(--accent2);
-                padding: 6px 14px;
-                border-radius: 20px;
-                font-size: 12px;
-                font-family: var(--mono);
-            }
-
-            .ai-error {
-                display: none;
-                background: rgba(232, 93, 93, 0.1);
-                border: 1px solid var(--danger);
-                border-radius: 10px;
-                padding: 14px 16px;
-                color: var(--danger);
-                font-size: 12px;
-            }
-            .ai-error.active {
-                display: block;
-            }
-
-            /* ── Agent Actions ── */
-            .agent-actions-section {
-                margin-top: 16px;
-                display: block;
-            }
-            .agent-actions-hdr {
-                font-size: 11px;
-                font-family: var(--mono);
-                color: var(--text3);
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                padding: 0 0 10px;
-                margin-bottom: 4px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .agent-profile-summary {
-                font-size: 11px;
-                color: var(--text2);
-                padding: 8px 12px;
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 8px;
-                margin-bottom: 10px;
-                display: none;
-            }
-            .agent-profile-summary.active {
-                display: block;
-            }
-            .agent-pending-action {
-                display: flex;
-                align-items: flex-start;
-                gap: 10px;
-                padding: 10px 12px;
-                background: rgba(91, 141, 238, 0.06);
-                border: 1px solid rgba(91, 141, 238, 0.2);
-                border-radius: 8px;
-                margin-bottom: 8px;
-            }
-            .agent-pending-action .apa-icon {
-                flex-shrink: 0;
-                font-size: 16px;
-                margin-top: 1px;
-            }
-            .agent-pending-action .apa-body {
-                flex: 1;
-                min-width: 0;
-            }
-            .agent-pending-action .apa-body .apa-tool {
-                font-size: 11px;
-                font-weight: 600;
-                color: var(--accent);
-                font-family: var(--mono);
-            }
-            .agent-pending-action .apa-body .apa-desc {
-                font-size: 11px;
-                color: var(--text2);
-                margin-top: 2px;
-            }
-            .agent-pending-action .apa-body .apa-reason {
-                font-size: 10px;
-                color: var(--text3);
-                margin-top: 2px;
-                font-style: italic;
-            }
-            .agent-pending-action .apa-actions {
-                display: flex;
-                gap: 6px;
-                flex-shrink: 0;
-            }
-            .apa-btn-approve {
-                background: rgba(82, 201, 122, 0.15);
-                border: 1px solid rgba(82, 201, 122, 0.3);
-                color: var(--success);
-                border-radius: 6px;
-                padding: 4px 10px;
-                font-size: 11px;
-                cursor: pointer;
-                font-family: var(--sans);
-                transition: all 0.15s;
-            }
-            .apa-btn-approve:hover {
-                background: var(--success);
-                color: #fff;
-            }
-            .apa-btn-dismiss {
-                background: transparent;
-                border: 1px solid var(--border);
-                color: var(--text3);
-                border-radius: 6px;
-                padding: 4px 10px;
-                font-size: 11px;
-                cursor: pointer;
-                font-family: var(--sans);
-                transition: all 0.15s;
-            }
-            .apa-btn-dismiss:hover {
-                border-color: var(--danger);
-                color: var(--danger);
-            }
-            .agent-empty {
-                font-size: 11px;
-                color: var(--text3);
-                padding: 12px;
-                text-align: center;
-            }
-
-            /* ── 推荐列表卡片 ── */
-            .ai-recs-section {
-                display: none;
-            }
-            .ai-recs-section.active {
-                display: block;
-            }
-            .ai-recs-section .ai-recs-hdr {
-                font-size: 11px;
-                font-family: var(--mono);
-                color: var(--text3);
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                padding: 0 0 10px;
-                margin-bottom: 4px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .rec-card {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 12px 16px;
-                cursor: pointer;
-                transition: background 0.1s;
-                border-bottom: 1px solid rgba(42, 47, 66, 0.4);
-            }
-            .rec-card:hover {
-                background: var(--surface);
-            }
-            .rec-card .rec-card-icon {
-                width: 32px;
-                height: 32px;
-                background: linear-gradient(
-                    135deg,
-                    var(--accent),
-                    var(--accent2)
-                );
-                border-radius: 8px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 16px;
-                flex-shrink: 0;
-            }
-            .rec-card .rec-card-body {
-                flex: 1;
-                min-width: 0;
-            }
-            .rec-card .rec-card-title {
-                font-size: 13px;
+                font-size: 14px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 margin-bottom: 2px;
             }
-            .rec-card .rec-card-meta {
-                font-size: 10px;
-                color: var(--text3);
-                font-family: var(--mono);
-                white-space: nowrap;
+            .item-meta {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 11px;
+                color: var(--muted-fg);
+            }
+            .item-url {
+                font-family: var(--font-mono);
+                opacity: 0.5;
                 overflow: hidden;
                 text-overflow: ellipsis;
-            }
-            .rec-card .rec-card-reason {
-                font-size: 10px;
-                color: var(--success);
-                margin-top: 3px;
                 white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                max-width: 300px;
             }
-            .rec-card .rec-card-actions {
+            .item-actions {
                 display: flex;
-                gap: 6px;
-                flex-shrink: 0;
-            }
-            .rec-btn-accept {
-                background: rgba(82, 201, 122, 0.15);
-                border: 1px solid rgba(82, 201, 122, 0.3);
-                color: var(--success);
-                border-radius: 6px;
-                padding: 5px 12px;
-                font-size: 11px;
-                cursor: pointer;
-                font-family: var(--sans);
-                transition: all 0.15s;
-            }
-            .rec-btn-accept:hover {
-                background: var(--success);
-                color: #fff;
-            }
-            .rec-btn-reject {
-                background: transparent;
-                border: 1px solid var(--border);
-                color: var(--text3);
-                border-radius: 6px;
-                padding: 5px 10px;
-                font-size: 11px;
-                cursor: pointer;
-                font-family: var(--sans);
-                transition: all 0.15s;
-            }
-            .rec-btn-reject:hover {
-                border-color: var(--danger);
-                color: var(--danger);
-            }
-
-            /* ── AI 服务配置 ── */
-            .ai-provider-config {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 12px;
-                padding: 14px 16px;
-            }
-            .ai-provider-config .pc-hdr {
-                font-size: 11px;
-                font-family: var(--mono);
-                color: var(--text3);
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin-bottom: 10px;
-            }
-            .pc-row {
-                display: flex;
-                gap: 8px;
                 align-items: center;
-                margin-bottom: 8px;
+                gap: 12px;
             }
-            .pc-row:last-child {
-                margin-bottom: 0;
-            }
-            .pc-row label {
+            .badge {
+                padding: 1px 8px;
+                border-radius: 4px;
+                background: var(--muted);
+                border: 1px solid var(--border);
                 font-size: 10px;
-                font-family: var(--mono);
-                color: var(--text3);
-                min-width: 52px;
-                text-align: right;
-                flex-shrink: 0;
+                font-family: var(--font-mono);
+                color: var(--muted-fg);
             }
-            .pc-row input,
-            .pc-row select {
-                background: var(--bg);
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                padding: 6px 10px;
-                color: var(--text);
-                font-family: var(--mono);
-                font-size: 11px;
-                outline: none;
-            }
-            .pc-row select {
-                cursor: pointer;
-                flex: 1;
-            }
-            .pc-row input {
-                flex: 1;
-            }
-            .pc-row input:focus,
-            .pc-row select:focus {
-                border-color: var(--accent);
-            }
-            .pc-indicator {
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                flex-shrink: 0;
-            }
-            .pc-indicator.ok {
-                background: var(--success);
-            }
-            .pc-indicator.err {
-                background: var(--danger);
-            }
-            .pc-actions {
-                display: flex;
-                gap: 8px;
-                align-items: center;
-            }
-
-            .btn-ai-clear {
-                background: none;
-                border: 1px solid var(--border);
-                color: var(--text3);
+            .btn-pin-text {
                 padding: 4px 10px;
                 border-radius: 6px;
-                font-size: 10px;
+                border: 1px solid var(--border);
+                font-size: 11px;
+                font-weight: 600;
+                font-family: var(--font-mono);
                 cursor: pointer;
-                font-family: var(--mono);
-                transition: all 0.15s;
+                color: var(--muted-fg);
+                transition: 0.2s;
             }
-            .btn-ai-clear:hover {
-                border-color: var(--danger);
-                color: var(--danger);
+            .btn-pin-text.on {
+                border-color: var(--warning);
+                color: var(--warning);
+                background: rgba(245, 158, 11, 0.1);
             }
-
-            /* ── 语言选择器 ── */
-            .lang-row {
+            .score-group {
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
-                padding: 10px 14px;
-                border-top: 1px solid var(--border);
-                font-size: 11px;
-                color: var(--text3);
+                background: var(--muted);
+                border-radius: 6px;
+                padding: 2px;
             }
-            .lang-options {
-                display: flex;
-                gap: 4px;
-            }
-            .lang-option {
-                background: var(--surface2);
-                border: 1px solid var(--border);
-                color: var(--text2);
-                border-radius: 4px;
-                padding: 3px 8px;
-                font-size: 11px;
-                font-family: var(--mono);
+            .score-btn {
+                background: none;
+                border: none;
+                color: var(--muted-fg);
                 cursor: pointer;
-                transition: all 0.15s;
+                padding: 0 6px;
+                font-size: 14px;
             }
-            .lang-option:hover {
-                border-color: var(--accent);
-                color: var(--accent);
+            .score-val {
+                min-width: 24px;
+                text-align: center;
+                font-family: var(--font-mono);
+                font-size: 11px;
+                color: var(--warning);
             }
-            .lang-option.active {
-                background: var(--accent);
-                border-color: var(--accent);
+
+            /* --- Settings --- */
+            .settings-grid {
+                display: flex;
+                flex-direction: column;
+                gap: 32px;
+                max-width: 800px;
+            }
+            .setting-section {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+            .setting-header {
+                font-size: 16px;
+                font-weight: 600;
+                border-bottom: 1px solid var(--border);
+                padding-bottom: 8px;
+            }
+            .form-row {
+                display: flex;
+                gap: 12px;
+            }
+            .input {
+                background: #000;
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 8px 12px;
                 color: #fff;
+                outline: none;
+                font-size: 13px;
+                font-family: var(--font-mono);
+                flex: 1;
+            }
+            .btn {
+                padding: 8px 16px;
+                border-radius: var(--radius);
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+                border: 1px solid var(--border);
+                transition: 0.2s;
+                background: var(--primary);
+                color: var(--primary-fg);
+            }
+            .btn-ghost {
+                background: transparent;
+                color: var(--muted-fg);
+            }
+            .btn-danger {
+                color: var(--danger);
+                border-color: rgba(239, 68, 68, 0.2);
+                background: transparent;
+            }
+            .btn-danger:hover {
+                background: var(--danger);
+                color: #fff;
+            }
+
+            /* --- Toast --- */
+            #toast {
+                position: fixed;
+                bottom: 24px;
+                right: 24px;
+                padding: 12px 20px;
+                background: #18181b;
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                font-size: 13px;
+                transform: translateY(100px);
+                transition: 0.3s;
+                z-index: 100;
+            }
+            #toast.show {
+                transform: translateY(0);
             }
         </style>
     </head>
     <body>
-        <div class="app">
-            <header>
-                <div class="logo">
-                    <div class="logo-icon">📡</div>
-                    <h1>Acuminata</h1>
+        <nav class="sidebar">
+            <div class="logo">
+                <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <path
+                        d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                    />
+                </svg>
+                Site Tracker Agent
+            </div>
+            <div class="nav-menu">
+                <div class="nav-item active" data-target="overview">
+                    <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" /></svg
+                    >总览
                 </div>
-                <div class="header-right">
-                    <div class="ws-status">
-                        <div class="ws-dot" id="wsDot"></div>
-                        <span id="wsStatusText" data-i18n="header.ws.disconnected">未连接</span>
-                    </div>
-                    <div class="toggle-wrap">
-                        <span id="toggleLabel" data-i18n="header.tracking">追踪中</span>
-                        <label class="tgl">
-                            <input type="checkbox" id="enabledToggle" checked />
-                            <span class="tgl-slider"></span>
-                        </label>
-                    </div>
+                <div class="nav-item" data-target="history">
+                    <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <polyline
+                            points="22 12 18 12 15 21 9 3 6 12 2 12"
+                        /></svg
+                    >监控历史
                 </div>
-            </header>
+                <div class="nav-item" data-target="ai-agent" style="color: #a855f7;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                        AI 智能助理
+                      </div>
+                      <div class="nav-item" data-target="settings">
+                <div class="nav-item" data-target="settings">
+                    <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                        /></svg
+                    >设置
+                </div>
+            </div>
+            <div class="ws-status">
+                <div class="ws-dot" id="wsDot"></div>
+                <span id="wsStatusText">OFFLINE</span>
+            </div>
+        </nav>
 
-            <div class="main-grid">
-                <!-- Records Panel -->
-                <div class="records-panel">
-                    <div class="panel-top">
-                        <div class="search-box" id="searchBox">
-                            <span class="search-icon">🔍</span>
-                            <input
-                                type="text"
-                                id="searchInput"
-                                placeholder="搜索标题或域名..."
-                                data-i18n-placeholder="search.placeholder"
-                            />
-                            <button class="search-clear" id="searchClear">
-                                ✕
-                            </button>
+        <main class="main-content">
+            <div id="overview" class="tab-panel active">
+                <h2>总览</h2>
+                <div class="grid-metrics">
+                    <div class="card">
+                        <div class="metric-title">总记录数</div>
+                        <div class="metric-value" id="statTotal">0</div>
+                    </div>
+                    <div class="card">
+                        <div class="metric-title">今日捕获</div>
+                        <div class="metric-value" id="statToday">0</div>
+                    </div>
+                    <div class="card">
+                        <div class="metric-title">监控站点</div>
+                        <div class="metric-value" id="statSites">0</div>
+                    </div>
+                    <div class="card">
+                        <div class="metric-title">最常访问</div>
+                        <div
+                            class="metric-value"
+                            id="statTopSite"
+                            style="font-size: 16px"
+                        >
+                            -
                         </div>
-                        <button
-                            id="btnBatchDelete"
-                            class="btn-sm ghost"
+                    </div>
+                </div>
+            </div>
+
+            <div id="history" class="tab-panel">
+                <h2>监控的历史</h2>
+                <div class="toolbar">
+                    <input
+                        type="text"
+                        class="search-input"
+                        id="searchInput"
+                        placeholder="搜索标题、URL、或番号..."
+                    />
+                    <button
+                        id="btnBatchDelete"
+                        class="btn btn-danger"
+                        style="display: none"
+                    >
+                        删除选中 (0)
+                    </button>
+                </div>
+                <div class="filter-bar" id="filterBar">
+                    <div class="filter-chip active" data-domain="all">全部</div>
+                    <div class="filter-chip" data-domain="pinned">★ 已收藏</div>
+                </div>
+                <div class="data-list" id="recordsContainer"></div>
+                <div
+                    id="loadMoreContainer"
+                    style="padding: 20px; text-align: center"
+                ></div>
+            </div>
+
+            <div id="ai-agent" class="tab-panel">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h2>AI 智能助理</h2>
+                    <button class="btn" id="btnRunAgent" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none; color: #fff;">
+                      唤醒 Agent 分析
+                    </button>
+                  </div>
+
+                  <div class="card" style="margin-bottom: 32px; border-color: rgba(168, 85, 247, 0.3); background: linear-gradient(180deg, rgba(168, 85, 247, 0.05) 0%, #000 100%);">
+                    <div class="setting-header" style="color: #c084fc; border-bottom-color: rgba(168, 85, 247, 0.2);">您的专属数字画像</div>
+                    <p id="aiProfileText" style="color: var(--muted-fg); margin-top: 16px; line-height: 1.6; font-size: 13px;">
+                      Agent 正在沉睡。点击右上角按钮，允许 Agent 读取您本地的高分记录并生成口味分析报告...
+                    </p>
+                    <div id="aiTags" style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;"></div>
+                  </div>
+
+                  <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <h3 style="font-size: 16px; font-weight: 600;">Agent 推荐流</h3>
+                    <span class="badge" style="background: rgba(168,85,247,0.1); color: #c084fc; border: none;">基于大模型推演</span>
+                  </div>
+
+                  <div class="data-list" id="recommendationsContainer">
+                    <div style="padding:40px; text-align:center; color:var(--muted-fg);">暂无推荐内容</div>
+                  </div>
+                </div>
+                
+
+            <div id="settings" class="tab-panel">
+                <h2>设置</h2>
+                <div class="settings-grid">
+                    <div class="setting-section card">
+                        <div class="setting-header">全局开关</div>
+                        <div
                             style="
-                                display: none;
-                                color: var(--danger);
-                                border-color: rgba(232, 93, 93, 0.3);
-                                margin-left: 10px;
+                                display: flex;
+                                align-items: center;
+                                gap: 12px;
                             "
                         >
-                            删除选中 (0)
+                            <span id="toggleLabel">追踪开启中</span>
+                            <input
+                                type="checkbox"
+                                id="enabledToggle"
+                                checked
+                                style="width: 20px; height: 20px"
+                            />
+                        </div>
+                    </div>
+                    <div class="setting-section card">
+                        <div class="setting-header">添加监控组</div>
+                        <div class="form-row">
+                            <input
+                                type="text"
+                                id="inputDomain"
+                                class="input"
+                                placeholder="域名 (e.g. 123.com)"
+                            />
+                            <input
+                                type="text"
+                                id="inputLabel"
+                                class="input"
+                                placeholder="备注分组 (伪装组)"
+                            />
+                            <input
+                                type="color"
+                                id="inputColor"
+                                value="#5b8dee"
+                                style="
+                                    width: 40px;
+                                    height: 38px;
+                                    border: none;
+                                    background: none;
+                                    cursor: pointer;
+                                "
+                            />
+                        </div>
+                        <div class="form-row">
+                            <select
+                                id="inputRegexTarget"
+                                class="input"
+                                style="flex: 0.4"
+                            >
+                                <option value="url">匹配 URL</option>
+                                <option value="title">匹配标题</option>
+                            </select>
+                            <input
+                                type="text"
+                                id="inputRegexFilter"
+                                class="input"
+                                placeholder="正则过滤规则 (可选)"
+                            />
+                            <button class="btn" id="btnAdd">添加站点</button>
+                        </div>
+                    </div>
+                    <div class="setting-section card">
+                        <div class="setting-header">已监控列表</div>
+                        <div
+                            id="watchlist"
+                            style="
+                                display: flex;
+                                flex-direction: column;
+                                gap: 8px;
+                            "
+                        ></div>
+                    </div>
+                    <div
+                        class="setting-section"
+                        style="flex-direction: row; gap: 12px"
+                    >
+                        <button class="btn btn-ghost" id="btnExport">
+                            导出 JSON 数据
+                        </button>
+                        <button class="btn btn-danger" id="btnClear">
+                            清空所有历史记录
                         </button>
                     </div>
-                    <div class="filter-bar" id="filterBar">
-                        <div class="filter-chip active" data-domain="all">
-                            全部
-                        </div>
-                    </div>
-                    <div class="records-scroll" id="recordsScroll">
-                        <div id="recordsContainer"></div>
-                        <div class="ai-panel" id="aiPanel">
-                            <div class="ai-header">
-                                <div class="ai-icon">🤖</div>
-                                <div>
-                                    <div class="ai-title" data-i18n="ai.title">AI 智能推荐</div>
-                                    <div class="ai-subtitle" data-i18n="ai.subtitle">
-                                        本地分析 · 隐私安全
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="ai-provider-config">
-                                <div class="pc-hdr" data-i18n="ai.config">AI 服务配置</div>
-                                <div class="pc-row">
-                                    <label>Provider</label>
-                                    <select id="aiProvider">
-                                        <option value="ollama" data-i18n="provider.ollama">Ollama (本地)</option>
-                                        <option value="openai" data-i18n="provider.openai">OpenAI API</option>
-                                        <option value="anthropic" data-i18n="provider.anthropic">Anthropic API</option>
-                                        <option value="minimax" data-i18n="provider.minimax">MiniMax (Anthropic 兼容)</option>
-                                    </select>
-                                </div>
-                                <div class="pc-row">
-                                    <label>Endpoint</label>
-                                    <input
-                                        type="text"
-                                        id="aiEndpoint"
-                                        placeholder="http://127.0.0.1:11434"
-                                    />
-                                </div>
-                                <div
-                                    class="pc-row"
-                                    id="aiApiKeyRow"
-                                    style="display: none"
-                                >
-                                    <label>API Key</label>
-                                    <input
-                                        type="password"
-                                        id="aiApiKey"
-                                        placeholder="sk-..."
-                                    />
-                                </div>
-                                <div class="pc-row">
-                                    <label>Model</label>
-                                    <input
-                                        type="text"
-                                        id="aiModel"
-                                        placeholder="qwen2.5:7b"
-                                    />
-                                </div>
-                                <div class="pc-row">
-                                    <label></label>
-                                    <div class="pc-actions">
-                                        <button class="btn-sm ghost" id="btnTestAi" data-i18n="ai.testBtn">测试连接</button>
-                                        <div
-                                            class="pc-indicator"
-                                            id="aiIndicator"
-                                        ></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="ai-trigger-area" id="aiTriggerArea">
-                                <button class="btn-ai-trigger" id="btnAiAnalyze" data-i18n="ai.trigger">🤖 开始分析我的偏好</button>
-                                <div class="ai-trigger-hint" data-i18n="ai.hint">基于您的高分/收藏记录，本地 AI 为您分析内容偏好</div>
-                            </div>
-
-                            <div class="ai-loading" id="aiLoading">
-                                <div class="ai-spinner"></div>
-                                <span data-i18n="ai.loading">AI 正在分析您的偏好...</span>
-                            </div>
-                            </div>
-
-                            <div class="ai-loading" id="aiLoading">
-                                <div class="ai-spinner"></div>
-                                <span>AI 正在分析您的偏好...</span>
-                            </div>
-
-                            <div class="ai-error" id="aiError"></div>
-
-                            <div class="ai-result" id="aiResult">
-                                <div class="ai-summary-card">
-                                    <div class="ai-sc-label" data-i18n="ai.summary">📊 口味分析</div>
-                                    <div class="ai-sc-text" id="aiSummary"></div>
-                                </div>
-                                <div class="ai-keywords-card">
-                                    <div class="ai-kw-label" data-i18n="ai.keywords">🔑 推荐关键词</div>
-                                    <div class="ai-keywords-list" id="aiKeywords"></div>
-                                </div>
-                            </div>
-
-                            <div class="ai-recs-section" id="aiRecsSection">
-                                <div class="ai-recs-hdr">
-                                    <span data-i18n="ai.recs">📋 已发现的推荐内容</span>
-                                    <button class="btn-ai-clear" id="btnClearRecs" data-i18n="ai.clearRecs">清空推荐</button>
-                                </div>
-                                <div class="ai-keywords-card">
-                                    <div class="ai-kw-label">🔑 推荐关键词</div>
-                                    <div
-                                        class="ai-keywords-list"
-                                        id="aiKeywords"
-                                    ></div>
-                                </div>
-                            </div>
-
-                            <div class="ai-recs-section" id="aiRecsSection">
-                                <div class="ai-recs-hdr">
-                                    <span>📋 已发现的推荐内容</span>
-                                    <button
-                                        class="btn-ai-clear"
-                                        id="btnClearRecs"
-                                    >
-                                        清空推荐
-                                    </button>
-                                </div>
-                                <div id="aiRecsContainer"></div>
-                            </div>
-
-                            <div class="agent-actions-section" id="agentActionsSection">
-                                <div class="agent-actions-hdr">
-                                    <span data-i18n="agent.title">🧠 Agent Actions</span>
-                                    <button class="btn-sm ghost" id="btnAutoClean" data-i18n="agent.autoClean">Auto-Clean</button>
-                                </div>
-                                <div class="agent-profile-summary" id="agentProfileSummary"></div>
-                                <div class="agent-pending-actions" id="agentPendingActions"></div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
-
-                <!-- Sidebar -->
-                <aside class="sidebar">
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="val" id="statTotal">0</div>
-                            <div class="lbl" id="statTotalLabel" data-i18n="stats.totalRecords">总记录数</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="val" id="statToday">0</div>
-                            <div class="lbl" id="statTodayLabel" data-i18n="stats.today">今日记录</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="val" id="statSites">0</div>
-                            <div class="lbl" id="statSitesLabel" data-i18n="stats.sites">追踪站点</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="val" id="statTopSite" style="font-size: 15px">-</div>
-                            <div class="lbl" id="statTopSiteLabel" data-i18n="stats.mostVisited">最多访问</div>
-                        </div>
-                    </div>
-
-                    <div class="sidebar-section">
-                        <div class="sect-hdr" id="watchlistToggle">
-                            <span data-i18n="watchlist.title">追踪站点</span>
-                            <span
-                                style="
-                                    display: flex;
-                                    align-items: center;
-                                    gap: 8px;
-                                "
-                            >
-                                <button
-                                    class="btn-sm ghost"
-                                    id="btnToggleAdd"
-                                    style="font-size: 10px; padding: 3px 8px"
-                                >
-                                    +
-                                </button>
-                                <span class="arrow">▼</span>
-                            </span>
-                        </div>
-                        <div class="sect-body" id="watchlistBody">
-                            <div class="add-form-inline" id="addFormInline">
-                                <div class="af-row">
-                                    <input
-                                        type="text"
-                                        id="inputDomain"
-                                        placeholder="bilibili.com"
-                                        data-i18n-placeholder="watchlist.domainPlaceholder"
-                                        style="flex: 1.5"
-                                    />
-                                    <input
-                                        type="text"
-                                        id="inputLabel"
-                                        placeholder="分组备注"
-                                        data-i18n-placeholder="watchlist.labelPlaceholder"
-                                    />
-                                    <input
-                                        type="color"
-                                        id="inputColor"
-                                        value="#5b8dee"
-                                    />
-                                </div>
-                                <div class="af-row" style="margin-top: 8px">
-                                    <select
-                                        id="inputRegexTarget"
-                                        style="
-                                            background: var(--bg);
-                                            border: 1px solid var(--border);
-                                            color: var(--text);
-                                            border-radius: 6px;
-                                            padding: 4px 2px;
-                                            font-size: 11px;
-                                            outline: none;
-                                            cursor: pointer;
-                                        "
-                                    >
-                                        <option value="url" data-i18n="watchlist.regexUrl">匹配 URL</option>
-                                        <option value="title" data-i18n="watchlist.regexTitle">匹配标题</option>
-                                    </select>
-                                    <input
-                                        type="text"
-                                        id="inputRegexFilter"
-                                        placeholder="正则过滤 (可选，如 .*video.*)"
-                                        data-i18n-placeholder="watchlist.regexPlaceholder"
-                                        style="flex: 1"
-                                    />
-                                    <button class="btn-sm primary" id="btnAdd" data-i18n="watchlist.add">添加</button>
-                                </div>
-                            </div>
-                            <div class="watchlist-items" id="watchlist">
-                                <div class="empty-watchlist" data-i18n="watchlist.empty">暂无追踪站点</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="lang-row">
-                        <span data-i18n="lang.selector">🌐 语言 / Language</span>
-                        <div class="lang-options">
-                            <button class="lang-option" id="langZh" data-code="zh-CN" data-i18n="">中</button>
-                            <button class="lang-option" id="langEn" data-code="en">EN</button>
-                        </div>
-                    </div>
-
-                    <div class="sidebar-actions">
-                        <button class="btn-act export" id="btnExport" data-i18n="button.export">⬇ 导出 JSON</button>
-                        <button class="btn-act clear" id="btnClear" data-i18n="button.clear">🗑 清空记录</button>
-                    </div>
-                </aside>
             </div>
-        </div>
-
-        <div class="toast" id="toast"></div>
-
+        </main>
+        <div id="toast"></div>
         <script src="renderer.js"></script>
     </body>
 </html>
