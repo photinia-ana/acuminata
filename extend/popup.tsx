@@ -254,12 +254,12 @@ function IndexPopup() {
         <div
           style={activeTab === "records" ? styles.tabActive : styles.tab}
           onClick={() => setActiveTab("records")}>
-          📋 记录
+          记录
         </div>
         <div
           style={activeTab === "stats" ? styles.tabActive : styles.tab}
           onClick={() => setActiveTab("stats")}>
-          📊 统计
+          统计
         </div>
       </div>
 
@@ -396,7 +396,7 @@ function IndexPopup() {
           onClick={() => {
             chrome.runtime.openOptionsPage()
           }}>
-          ⚙ 设置
+          设置
         </button>
         <button
           style={styles.btn}
@@ -414,7 +414,7 @@ function IndexPopup() {
             a.download = `acuminata-${new Date().toISOString().slice(0, 10)}.json`
             a.click()
           }}>
-          ⬇ 导出
+          导出
         </button>
       </div>
     </div>
