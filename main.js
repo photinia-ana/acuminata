@@ -6,8 +6,8 @@ const https = require("https");
 const WebSocket = require("ws");
 const initSqlJs = require("sql.js");
 const { getTool, getReadTools, getWriteTools, getOpenAITools, getAnthropicTools } = require("./agent/tools");
-const { agentLoop, getPendingActions, clearPendingActions, addPendingAction, executeApprovedActions } = require("./agent/executor");
-const { getAgentProfile, saveAgentProfile, buildDeleteReflectionPrompt, buildRejectReflectionPrompt, applyReflection } = require("./agent/reflect");
+const { agentLoop, executeApprovedActions } = require("./agent/executor");
+const { buildDeleteReflectionPrompt, buildRejectReflectionPrompt, applyReflection } = require("./agent/reflect");
 
 const EXTENSION_PORT = 8766;
 const DB_PATH = path.join(app.getPath("userData"), "tracker.db");
@@ -27,7 +27,6 @@ let db;
 let saveTimer = null;
 let locale = {};
 let localeCode = "zh-CN";
-let pendingAgentActions = [];
 
 function t(key, params) {
   let str = locale[key] || key;
@@ -187,7 +186,111 @@ async function initDatabase() {
     status INTEGER DEFAULT 0,
     createdAt INTEGER NOT NULL
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS agent_conversations (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL DEFAULT 'analysis',
+    summary TEXT DEFAULT '',
+    system_prompt TEXT DEFAULT '',
+    created_at INTEGER NOT NULL,
+    completed_at INTEGER DEFAULT NULL
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS agent_messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    round INTEGER NOT NULL DEFAULT 0,
+    role TEXT NOT NULL,
+    content TEXT DEFAULT '',
+    tool_calls TEXT DEFAULT NULL,
+    tool_call_id TEXT DEFAULT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_am_conv ON agent_messages(conversation_id)`);
+  db.run(`CREATE TABLE IF NOT EXISTS agent_memories (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    key TEXT DEFAULT '',
+    value TEXT DEFAULT '',
+    weight REAL DEFAULT 0.5,
+    source_conversation_id TEXT,
+    source_reflection TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_amm_type ON agent_memories(type)`);
+  db.run(`CREATE TABLE IF NOT EXISTS agent_pending_actions (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    args TEXT NOT NULL DEFAULT '{}',
+    reason TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL,
+    resolved_at INTEGER DEFAULT NULL
+  )`);
+  try { db.run("DELETE FROM settings WHERE key = 'agent.profile'"); } catch (e) {}
   markDirty();
+}
+
+function agentNow() { return Date.now(); }
+function agentId() { return `${agentNow()}-${Math.random().toString(36).slice(2, 8)}`; }
+
+function dbConversationCreate(type, systemPrompt) {
+  const id = agentId();
+  const now = agentNow();
+  dbRun("INSERT INTO agent_conversations (id, type, system_prompt, created_at) VALUES (?, ?, ?, ?)", [id, type, systemPrompt || "", now]);
+  return id;
+}
+function dbConversationComplete(id, summary) {
+  dbRun("UPDATE agent_conversations SET summary = ?, completed_at = ? WHERE id = ?", [summary || "", agentNow(), id]);
+}
+function dbMessageInsert(conversationId, round, role, content, toolCalls, toolCallId) {
+  const id = agentId();
+  dbRun("INSERT INTO agent_messages (id, conversation_id, round, role, content, tool_calls, tool_call_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [id, conversationId, round, role, content || "", toolCalls ? JSON.stringify(toolCalls) : null, toolCallId || null, agentNow()]);
+}
+function dbMemoryUpsert(type, key, value, weight, sourceConvId, sourceReflection) {
+  const existing = dbGet("SELECT id, weight FROM agent_memories WHERE type = ? AND key = ?", [type, key]);
+  const now = agentNow();
+  if (existing) {
+    const newWeight = Math.min(1, Math.max(0, existing.weight * 0.7 + weight * 0.3));
+    dbRun("UPDATE agent_memories SET value = ?, weight = ?, updated_at = ?, source_reflection = ? WHERE id = ?",
+      [typeof value === "string" ? value : JSON.stringify(value), newWeight, now, sourceReflection || null, existing.id]);
+  } else {
+    dbRun("INSERT INTO agent_memories (id, type, key, value, weight, source_conversation_id, source_reflection, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [agentId(), type, key, typeof value === "string" ? value : JSON.stringify(value), weight, sourceConvId || null, sourceReflection || null, now, now]);
+  }
+}
+function dbMemoriesByType(type) {
+  return dbAll("SELECT * FROM agent_memories WHERE type = ? ORDER BY weight DESC", [type]);
+}
+function dbAllMemories() {
+  return dbAll("SELECT * FROM agent_memories ORDER BY updated_at DESC");
+}
+function dbPendingInsert(conversationId, toolName, args) {
+  const id = agentId();
+  dbRun("INSERT INTO agent_pending_actions (id, conversation_id, tool_name, args, created_at) VALUES (?, ?, ?, ?, ?)",
+    [id, conversationId, toolName, JSON.stringify(args), agentNow()]);
+  return id;
+}
+function dbPendingGetAll() {
+  return dbAll("SELECT * FROM agent_pending_actions WHERE status = 'pending' ORDER BY created_at ASC");
+}
+function dbPendingResolve(id, status) {
+  dbRun("UPDATE agent_pending_actions SET status = ?, resolved_at = ? WHERE id = ?", [status, agentNow(), id]);
+}
+function buildAgentProfile() {
+  const memories = dbAllMemories();
+  const profile = {
+    preferences: memories.filter((m) => m.type === "preference").map((m) => ({ key: m.key, weight: m.weight, value: m.value })),
+    antiPatterns: memories.filter((m) => m.type === "anti_pattern").map((m) => m.key),
+    insights: memories.filter((m) => m.type === "insight").map((m) => ({ key: m.key, value: m.value, weight: m.weight })),
+    domainHealth: {},
+    lastUpdated: memories.length > 0 ? Math.max(...memories.map((m) => m.updated_at || 0)) : null,
+  };
+  for (const m of memories.filter((m) => m.type === "domain_health")) {
+    profile.domainHealth[m.key] = m.weight;
+  }
+  return profile;
 }
 
 function loadWatchlist() {
@@ -891,7 +994,7 @@ const toolHandlers = {
     return { watchlist, count: watchlist.length };
   },
   get_agent_profile: () => {
-    return getAgentProfile(dbGet, dbRun);
+    return buildAgentProfile();
   },
   delete_records: async (args) => {
     const ids = args.ids;
@@ -952,38 +1055,36 @@ const toolHandlers = {
 // ── Agent IPC Handlers ──
 
 function broadcastPendingActions() {
-  broadcastToExtensions({ type: "agentPendingUpdated", actions: pendingAgentActions });
+  const actions = dbPendingGetAll();
+  broadcastToExtensions({ type: "agentPendingUpdated", actions });
 }
 
 ipcMain.handle("agent-get-pending", () => {
-  return pendingAgentActions;
+  return dbPendingGetAll();
 });
 
 ipcMain.handle("agent-approve-actions", async (_, actionIds) => {
-  const results = await executeApprovedActions(actionIds, toolHandlers, broadcastToExtensions);
-  // Update the pending list
-  const approvedIds = results.map((r) => r.action.id);
-  pendingAgentActions = pendingAgentActions.filter((a) => !approvedIds.includes(a.id));
+  const results = await executeApprovedActions(actionIds, toolHandlers, dbPendingGetAll);
+  for (const id of actionIds) dbPendingResolve(id, "approved");
   broadcastPendingActions();
   return results;
 });
 
 ipcMain.handle("agent-dismiss-actions", (_, actionIds) => {
-  pendingAgentActions = pendingAgentActions.filter((a) => !actionIds.includes(a.id));
+  for (const id of actionIds) dbPendingResolve(id, "dismissed");
   broadcastPendingActions();
   return { dismissed: actionIds.length };
 });
 
 ipcMain.handle("agent-get-profile", () => {
-  return getAgentProfile(dbGet, dbRun);
+  return buildAgentProfile();
 });
 
 ipcMain.handle("agent-auto-clean", async () => {
   try {
-    const profile = getAgentProfile(dbGet, dbRun);
+    const profile = buildAgentProfile();
     const stats = await toolHandlers.get_statistics({});
     const watchlistData = toolHandlers.get_watchlist({});
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     const sysMsg = `You are a browsing history cleaning assistant. Analyze the user's data and identify records that should be cleaned up. Consider three scenarios:
 1. Dead domains: domains in watchlist that have no records in the last 7 days
@@ -999,18 +1100,23 @@ Suggest deletions by calling the delete_records tool for junk records, and updat
       { role: "user", content: userMsg },
     ];
 
+    const convId = dbConversationCreate("auto_clean", sysMsg);
+    dbMessageInsert(convId, 0, "user", userMsg, null, null);
     const { result, pendingActions } = await agentLoop(
       messages,
       aiConfig,
       callAIFns,
       toolHandlers,
       broadcastToExtensions,
+      convId,
+      dbMessageInsert,
     );
+    dbConversationComplete(convId, result || "");
 
-    if (pendingActions.length > 0) {
-      pendingAgentActions.push(...pendingActions);
-      broadcastPendingActions();
+    for (const a of pendingActions) {
+      dbPendingInsert(convId, a.tool, a.args);
     }
+    if (pendingActions.length > 0) broadcastPendingActions();
 
     return { result, pendingActions };
   } catch (e) {
@@ -1023,7 +1129,6 @@ Suggest deletions by calling the delete_records tool for junk records, and updat
 
 async function triggerReflectionOnDelete(deletedRecords) {
   try {
-    const profile = getAgentProfile(dbGet, dbRun);
     const keptSample = dbAll(
       "SELECT * FROM records WHERE pinned = 1 ORDER BY score DESC, timestamp DESC LIMIT 20",
     );
@@ -1032,8 +1137,7 @@ async function triggerReflectionOnDelete(deletedRecords) {
     const jsonStr = extractJson(response);
     if (jsonStr) {
       const reflection = JSON.parse(jsonStr);
-      const updatedProfile = applyReflection(profile, reflection);
-      saveAgentProfile(updatedProfile, dbRun);
+      applyReflection(dbMemoryUpsert, reflection, null);
     }
   } catch (e) {
     console.error("Reflection on delete error:", e);
@@ -1042,7 +1146,6 @@ async function triggerReflectionOnDelete(deletedRecords) {
 
 async function triggerReflectionOnReject(rejectedRec) {
   try {
-    const profile = getAgentProfile(dbGet, dbRun);
     const keptSample = dbAll(
       "SELECT * FROM records WHERE pinned = 1 ORDER BY score DESC, timestamp DESC LIMIT 20",
     );
@@ -1051,8 +1154,7 @@ async function triggerReflectionOnReject(rejectedRec) {
     const jsonStr = extractJson(response);
     if (jsonStr) {
       const reflection = JSON.parse(jsonStr);
-      const updatedProfile = applyReflection(profile, reflection);
-      saveAgentProfile(updatedProfile, dbRun);
+      applyReflection(dbMemoryUpsert, reflection, null);
     }
   } catch (e) {
     console.error("Reflection on reject error:", e);
@@ -1236,7 +1338,65 @@ function callAI(prompt) {
   }
 }
 
-async function callOllamaTools(messages, tools) {
+async function callOllamaToolsNative(messages, tools) {
+  const base = aiConfig.endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const url = new URL(base + "/api/chat");
+  const ollamaMessages = messages.map((m) => {
+    if (m.role === "tool") return { role: "user", content: `[Tool result for ${m.tool_call_id}]: ${m.content}` };
+    if (m.role === "assistant" && m.tool_calls) {
+      const blocks = m.tool_calls.map((tc) => ({
+        type: "tool_use",
+        id: tc.id,
+        name: tc.name,
+        input: typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments,
+      }));
+      if (m.content) blocks.unshift({ type: "text", text: m.content });
+      return { role: "assistant", content: blocks };
+    }
+    return { role: m.role, content: m.content || "" };
+  });
+  const ollamaTools = tools.map((t) => ({
+    type: "function",
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }));
+  const body = JSON.stringify({
+    model: aiConfig.model,
+    messages: ollamaMessages,
+    tools: ollamaTools,
+    stream: false,
+  });
+  const { data } = await httpRequestJson(url, "POST", {}, body);
+  const parsed = JSON.parse(data);
+  if (parsed.error) throw new Error(parsed.error.message || JSON.stringify(parsed.error));
+  const msg = parsed.message || {};
+  const toolCalls = [];
+  let content = "";
+  if (msg.content) {
+    if (typeof msg.content === "string") content = msg.content;
+    else for (const block of msg.content) {
+      if (block.type === "text") content += block.text;
+      if (block.type === "tool_use") {
+        toolCalls.push({
+          id: block.id || `call_${toolCalls.length}`,
+          name: block.name,
+          arguments: JSON.stringify(block.input || {}),
+        });
+      }
+    }
+  }
+  if (msg.tool_calls) {
+    for (const tc of msg.tool_calls) {
+      toolCalls.push({
+        id: tc.id || `call_${toolCalls.length}`,
+        name: tc.function?.name || tc.name,
+        arguments: typeof tc.function?.arguments === "string" ? tc.function.arguments : JSON.stringify(tc.function?.arguments || tc.arguments || {}),
+      });
+    }
+  }
+  return { content, tool_calls: toolCalls };
+}
+
+async function callOllamaToolsPrompt(messages, tools) {
   const systemPrompt = `You are an intelligent browsing assistant with access to tools. You can call tools to search records, analyze statistics, and manage the user's watchlist. When you need to call a tool, respond with JSON in this format:
 
 { "tool_calls": [{ "id": "call_1", "function": { "name": "tool_name", "arguments": "{{...}}" } }], "content": "Your observation text" }
@@ -1261,6 +1421,15 @@ Always use valid JSON.`;
     return { content: parsed.content || "", tool_calls: parsed.tool_calls || [] };
   } catch (e) {
     return { content: response, tool_calls: [] };
+  }
+}
+
+async function callOllamaTools(messages, tools) {
+  try {
+    return await callOllamaToolsNative(messages, tools);
+  } catch (e) {
+    console.log("[Ollama] Native tool calling failed, falling back to prompt injection:", e.message);
+    return callOllamaToolsPrompt(messages, tools);
   }
 }
 
@@ -1565,18 +1734,23 @@ Always respond in the same language as the user's records. Be concise.`;
       { role: "user", content: userMsg },
     ];
 
+    const convId = dbConversationCreate("analysis", sysMsg);
+    dbMessageInsert(convId, 0, "user", userMsg, null, null);
     const { result, pendingActions } = await agentLoop(
       messages,
       aiConfig,
       callAIFns,
       toolHandlers,
       broadcastToExtensions,
+      convId,
+      dbMessageInsert,
     );
+    dbConversationComplete(convId, result || "");
 
-    if (pendingActions.length > 0) {
-      pendingAgentActions.push(...pendingActions);
-      broadcastPendingActions();
+    for (const a of pendingActions) {
+      dbPendingInsert(convId, a.tool, a.args);
     }
+    if (pendingActions.length > 0) broadcastPendingActions();
 
     const jsonStr = extractJson(result || "");
     let analysis = { summary: "", keywords: [] };

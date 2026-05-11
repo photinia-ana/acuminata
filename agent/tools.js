@@ -122,8 +122,7 @@ const TOOLS = [
       properties: {
         domain: {
           type: "string",
-          description:
-            "The watchlist domain whose regex rule to update.",
+          description: "The watchlist domain whose regex rule to update.",
         },
         regex_filter: {
           type: "string",
@@ -138,8 +137,7 @@ const TOOLS = [
         },
         reason: {
           type: "string",
-          description:
-            "Explanation of why this rule change is suggested.",
+          description: "Explanation of why this rule change is suggested.",
         },
       },
       required: ["domain", "regex_filter"],
@@ -163,8 +161,7 @@ const TOOLS = [
         },
         reason: {
           type: "string",
-          description:
-            "Brief explanation of why the score is being adjusted.",
+          description: "Brief explanation of why the score is being adjusted.",
         },
       },
       required: ["id", "score"],
@@ -196,8 +193,7 @@ const TOOLS = [
         },
         reason: {
           type: "string",
-          description:
-            "Why the agent recommends adding this record.",
+          description: "Why the agent recommends adding this record.",
         },
       },
       required: ["url", "title", "domain", "matched_rule"],

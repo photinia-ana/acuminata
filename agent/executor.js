@@ -2,25 +2,16 @@
 // Read tools execute immediately. Write tools go into a pending queue for user approval.
 // After approval, results are fed back to the loop.
 
-const { getReadTools, getWriteTools, getOpenAITools, getAnthropicTools } = require("./tools");
+const {
+  getReadTools,
+  getWriteTools,
+  getOpenAITools,
+  getAnthropicTools,
+} = require("./tools");
 
 const MAX_ROUNDS = 5;
 
-let pendingActions = [];
-
-function getPendingActions() {
-  return pendingActions;
-}
-
-function clearPendingActions() {
-  pendingActions = [];
-}
-
-function addPendingAction(action) {
-  pendingActions.push(action);
-}
-
-async function executeToolCalls(toolCalls, toolHandlers, broadcastFn) {
+async function executeToolCalls(toolCalls, toolHandlers) {
   const results = [];
   const newPending = [];
 
@@ -43,12 +34,20 @@ async function executeToolCalls(toolCalls, toolHandlers, broadcastFn) {
 
     const tool = require("./tools").getTool(name);
     if (tool && tool.category === "write") {
-      // Queue write actions for user approval
-      const action = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, tool: name, args, timestamp: Date.now() };
+      const action = {
+        tool: name,
+        args,
+        timestamp: Date.now(),
+      };
       newPending.push(action);
-      results.push({ name, result: { pending: true, action_id: action.id, message: "Action queued for user approval." } });
+      results.push({
+        name,
+        result: {
+          pending: true,
+          message: "Action queued for user approval.",
+        },
+      });
     } else {
-      // Execute read tools immediately
       try {
         const result = await handler(args);
         results.push({ name, result });
@@ -61,7 +60,15 @@ async function executeToolCalls(toolCalls, toolHandlers, broadcastFn) {
   return { results, newPending };
 }
 
-async function agentLoop(messages, aiConfig, callAIFns, toolHandlers, broadcastFn) {
+async function agentLoop(
+  messages,
+  aiConfig,
+  callAIFns,
+  toolHandlers,
+  broadcastFn,
+  conversationId,
+  dbSaveMessage,
+) {
   const tools = require("./tools").getAllTools();
   const openaiTools = getOpenAITools();
   const anthropicTools = getAnthropicTools();
@@ -81,55 +88,43 @@ async function agentLoop(messages, aiConfig, callAIFns, toolHandlers, broadcastF
     } else if (provider === "anthropic" || provider === "minimax") {
       response = await callAIFns.callAnthropicWithTools(messages, anthropicTools);
     } else {
-      // Ollama fallback: use JSON-mode prompt for tool calling
       response = await callAIFns.callOllamaWithTools(messages, tools);
     }
 
     const toolCalls = response.tool_calls || [];
     const content = response.content || "";
 
-    // If no tool calls, the agent is done
+    if (conversationId && dbSaveMessage) {
+      dbSaveMessage(conversationId, rounds, "assistant", content, toolCalls.length > 0 ? toolCalls : null);
+    }
+
     if (toolCalls.length === 0) {
       finalContent = content;
       break;
     }
 
-    // Execute tool calls
-    const { results, newPending } = await executeToolCalls(toolCalls, toolHandlers, broadcastFn);
+    const { results, newPending } = await executeToolCalls(toolCalls, toolHandlers);
 
     if (newPending.length > 0) {
       allPendingActions.push(...newPending);
-      // Add pending results to messages so the agent knows actions are queued
-      messages.push({
-        role: "assistant",
-        content: null,
-        tool_calls: toolCalls,
-      });
+      messages.push({ role: "assistant", content: null, tool_calls: toolCalls });
       for (let i = 0; i < toolCalls.length; i++) {
-        messages.push({
-          role: "tool",
-          tool_call_id: toolCalls[i].id || ("call_" + i),
-          content: JSON.stringify(results[i]?.result || { pending: true }),
-        });
+        const res = results[i]?.result || { pending: true };
+        messages.push({ role: "tool", tool_call_id: toolCalls[i].id || "call_" + i, content: JSON.stringify(res) });
+        if (conversationId && dbSaveMessage) {
+          dbSaveMessage(conversationId, rounds, "tool", JSON.stringify(res), null, toolCalls[i].id || "call_" + i);
+        }
       }
-      // Agent continues loop with pending knowledge
       continue;
     }
 
-    // Append assistant message with tool calls
-    messages.push({
-      role: "assistant",
-      content: content || null,
-      tool_calls: toolCalls,
-    });
-
-    // Append tool results
+    messages.push({ role: "assistant", content: content || null, tool_calls: toolCalls });
     for (let i = 0; i < toolCalls.length; i++) {
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCalls[i].id || ("call_" + i),
-        content: JSON.stringify(results[i]?.result || {}),
-      });
+      const res = results[i]?.result || {};
+      messages.push({ role: "tool", tool_call_id: toolCalls[i].id || "call_" + i, content: JSON.stringify(res) });
+      if (conversationId && dbSaveMessage) {
+        dbSaveMessage(conversationId, rounds, "tool", JSON.stringify(res), null, toolCalls[i].id || "call_" + i);
+      }
     }
   }
 
@@ -140,34 +135,29 @@ async function agentLoop(messages, aiConfig, callAIFns, toolHandlers, broadcastF
   return { result: finalContent, pendingActions: allPendingActions };
 }
 
-async function executeApprovedActions(actionIds, toolHandlers, broadcastFn) {
+async function executeApprovedActions(actionIds, toolHandlers, getPendingFn) {
   const results = [];
-  const remaining = [];
+  const pendingActions = getPendingFn ? getPendingFn() : [];
 
   for (const action of pendingActions) {
     if (actionIds.includes(action.id)) {
-      const handler = toolHandlers[action.tool];
+      const handler = toolHandlers[action.tool_name || action.tool];
+      const args = typeof action.args === "string" ? JSON.parse(action.args) : (action.args || {});
       if (handler) {
         try {
-          const result = await handler(action.args);
+          const result = await handler(args);
           results.push({ action, result });
         } catch (e) {
           results.push({ action, result: { error: e.message } });
         }
       }
-    } else {
-      remaining.push(action);
     }
   }
 
-  pendingActions = remaining;
   return results;
 }
 
 module.exports = {
   agentLoop,
-  getPendingActions,
-  clearPendingActions,
-  addPendingAction,
   executeApprovedActions,
 };

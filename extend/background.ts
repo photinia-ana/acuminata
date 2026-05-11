@@ -1,30 +1,10 @@
+import type { WatchlistEntry, HistoryRecord } from "../shared/types"
+
 const WS_URL = "ws://127.0.0.1:8766"
 const RECONNECT_INTERVAL = 3000
 const MAX_CACHED_RECORDS = 500
 
 type Mode = "ws" | "local"
-
-interface WatchlistEntry {
-  domain: string
-  label: string
-  color: string
-}
-
-interface HistoryRecord {
-  id: string
-  url: string
-  title: string
-  domain: string | null
-  matchedRule: string
-  tabId: number
-  timestamp: number
-  pinned?: number
-  score?: number | null
-  favIconUrl?: string
-  description?: string
-  ogImage?: string
-  dwellTime?: number
-}
 
 let ws: WebSocket | null = null
 let watchlist: WatchlistEntry[] = []
@@ -432,18 +412,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 })
 
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
+chrome.tabs.onActivated.addListener((activeInfo) => {
   const prevTabId = Object.keys(tabEntryTimes).map(Number).find((t) => t !== activeInfo.tabId)
   if (prevTabId) flushDwellTime(prevTabId)
   tabEntryTimes[activeInfo.tabId] = Date.now()
-  try {
-    const tab = await chrome.tabs.get(activeInfo.tabId)
-    if (tab.url) {
-      handleUrl(tab.url, activeInfo.tabId, tab.title || "", tab.favIconUrl || "")
-    }
-  } catch (e) {
-    // ignore
-  }
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {

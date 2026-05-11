@@ -1,27 +1,6 @@
 import { useEffect, useState } from "react"
 import logoIcon from "url:~assets/icon.png"
-
-interface WatchlistEntry {
-  domain: string
-  label: string
-  color: string
-}
-
-interface HistoryRecord {
-  id: string
-  url: string
-  title: string
-  domain: string | null
-  matchedRule: string
-  tabId: number
-  timestamp: number
-  pinned?: number
-  score?: number | null
-  favIconUrl?: string
-  description?: string
-  ogImage?: string
-  dwellTime?: number
-}
+import type { WatchlistEntry, HistoryRecord } from "../shared/types"
 
 function escapeHtml(str: string): string {
   return str

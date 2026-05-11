@@ -365,6 +365,7 @@
             .form-row {
                 display: flex;
                 gap: 12px;
+                flex-wrap: wrap;
             }
             .input {
                 background: #000;
@@ -376,6 +377,7 @@
                 font-size: 13px;
                 font-family: var(--font-mono);
                 flex: 1;
+                min-width: 120px;
             }
             .btn {
                 padding: 8px 16px;
@@ -545,9 +547,11 @@
             <div id="ai-agent" class="tab-panel">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                     <h2>AI 智能助理</h2>
-                    <button class="btn" id="btnRunAgent">
-                      唤醒 Agent 分析
-                    </button>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                      <button class="btn btn-ghost" id="btnAutoClean">自动清理</button>
+                      <button class="btn btn-ghost" id="btnAgentPending" style="display:none">待审批 (0)</button>
+                      <button class="btn" id="btnRunAgent">唤醒 Agent 分析</button>
+                    </div>
                   </div>
 
                   <div class="card" style="margin-bottom: 32px;">
@@ -561,6 +565,7 @@
                   <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
                     <h3 style="font-size: 16px; font-weight: 600;">Agent 推荐流</h3>
                     <span class="badge" style="background: rgba(168,85,247,0.1); color: #c084fc; border: none;">基于大模型推演</span>
+                    <button class="btn btn-ghost" id="btnClearRecs" style="margin-left:auto; font-size:11px; padding:3px 10px;">清空</button>
                   </div>
 
                   <div class="data-list" id="recommendationsContainer">
@@ -646,6 +651,20 @@
                                 gap: 8px;
                             "
                         ></div>
+                    </div>
+                    <div class="setting-section card">
+                        <div class="setting-header">AI 模型配置</div>
+                        <div class="form-row">
+                            <select id="inputAiProvider" class="input" style="flex:0.4">
+                                <option value="ollama">Ollama</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="anthropic">Anthropic</option>
+                            </select>
+                            <input type="text" id="inputAiEndpoint" class="input" placeholder="Endpoint (e.g. http://127.0.0.1:11434)" />
+                            <input type="password" id="inputAiApiKey" class="input" placeholder="API Key (可选)" />
+                            <input type="text" id="inputAiModel" class="input" placeholder="Model (e.g. qwen2.5:7b)" />
+                            <button class="btn" id="btnSaveAiConfig">保存配置</button>
+                        </div>
                     </div>
                     <div
                         class="setting-section"

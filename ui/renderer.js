@@ -1,4 +1,9 @@
+// @ts-check
+/// <reference path="../shared/types.d.ts" />
+
+/** @type {import("../shared/types").WatchlistEntry[]} */
 let watchlist = [];
+/** @type {import("../shared/types").HistoryRecord[]} */
 let records = [];
 let enabled = true;
 let activeFilter = "all";
@@ -7,10 +12,16 @@ let currentPage = 1;
 let pageSize = 100;
 let totalRecords = 0;
 let loadedAll = false;
+/** @type {{ total: number; today: number; sites: number; enabled: boolean; domainCounts: Record<string, number>; topDomain: string|null; topDomainCount: number; }|null} */
 let stats = null;
+/** @type {Set<string>} */
 let selectedIds = new Set();
 
 // --- 基础工具函数 ---
+/**
+ * @param {number} ts
+ * @returns {string}
+ */
 function formatTime(ts) {
   const d = new Date(ts);
   const now = new Date();
@@ -25,11 +36,19 @@ function formatTime(ts) {
   return d.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
+/**
+ * @param {string} val
+ * @returns {string}
+ */
 function getDomainColor(val) {
   const entry = watchlist.find((e) => e.domain === val || e.label === val);
   return entry ? entry.color : "#767d88";
 }
 
+/**
+ * @param {string} str
+ * @returns {string}
+ */
 function escapeHtml(str) {
   return String(str).replace(
     /[&<>"']/g,
@@ -40,6 +59,10 @@ function escapeHtml(str) {
   );
 }
 
+/**
+ * @param {string} msg
+ * @param {"success"|"error"} [type="success"]
+ */
 function showToast(msg, type = "success") {
   const el = document.getElementById("toast");
   el.textContent = msg;
@@ -369,6 +392,16 @@ document.getElementById("btnClear").onclick = async function () {
   }
 };
 
+document.getElementById("btnSaveAiConfig").onclick = async function () {
+  await window.electronAPI.setAiConfig({
+    provider: document.getElementById("inputAiProvider").value,
+    endpoint: document.getElementById("inputAiEndpoint").value,
+    apiKey: document.getElementById("inputAiApiKey").value,
+    model: document.getElementById("inputAiModel").value,
+  });
+  showToast("AI 配置已保存");
+};
+
 // --- 初始化与监听 ---
 async function init() {
   setWsStatus(false);
@@ -379,6 +412,12 @@ async function init() {
   renderFilterBar();
   loadRecords(1);
   setWsStatus(true);
+
+  const aiCfg = await window.electronAPI.getAiConfig();
+  document.getElementById("inputAiProvider").value = aiCfg.provider || "ollama";
+  document.getElementById("inputAiEndpoint").value = aiCfg.endpoint || "http://127.0.0.1:11434";
+  document.getElementById("inputAiApiKey").value = aiCfg.apiKey || "";
+  document.getElementById("inputAiModel").value = aiCfg.model || "qwen2.5:7b";
 }
 
 window.electronAPI.onUpdate((data) => {
@@ -391,81 +430,159 @@ window.electronAPI.onUpdate((data) => {
     records = [];
     renderRecords();
     refreshStats();
+  } else if (data.type === "agentPendingUpdated") {
+    loadPendingActions();
   }
 });
 
 document.getElementById("btnRunAgent").onclick = async function () {
   const btn = this;
-  const profileText = document.getElementById("aiProfileText");
-  const tagsContainer = document.getElementById("aiTags");
-  const recContainer = document.getElementById("recommendationsContainer");
-
-  // 1. 进入 Loading 状态
   btn.innerHTML = "⏳ 模型推演中...";
   btn.style.opacity = "0.7";
   btn.style.pointerEvents = "none";
+  document.getElementById("aiProfileText").innerHTML =
+    "<span style='color: var(--muted-fg); font-family: var(--font-mono);'>[System] Agent is analyzing your records...</span>";
+  document.getElementById("aiTags").innerHTML = "";
+  document.getElementById("recommendationsContainer").innerHTML =
+    '<div style="padding:40px; text-align:center; color:var(--muted-fg)">正在推演中...</div>';
 
-  profileText.innerHTML =
-    "<span style='color: #a855f7; font-family: var(--font-mono);'>[System] Loading local models... Analyzing pinned records...</span>";
-  tagsContainer.innerHTML = "";
-  recContainer.innerHTML =
-    '<div style="padding:40px; text-align:center; color:var(--muted-fg)">正在全网探测可能感兴趣的节点...</div>';
+  try {
+    const analysis = await window.electronAPI.triggerAgentAnalysis();
+    if (analysis.error) {
+      document.getElementById("aiProfileText").innerHTML =
+        `<span style="color: var(--danger)">分析失败: ${escapeHtml(analysis.error)}</span>`;
+      showToast(String(analysis.error), "error");
+    } else {
+      document.getElementById("aiProfileText").textContent = analysis.summary || "";
+      const tagsHtml = (analysis.keywords || []).map((kw) =>
+        `<span class="badge" style="border-color: var(--muted-fg); color: var(--foreground); background: var(--muted); font-size: 12px; padding: 3px 10px;">${escapeHtml(kw)}</span>`
+      ).join("");
+      document.getElementById("aiTags").innerHTML = tagsHtml;
+      loadRecommendations();
+      loadPendingActions();
+      showToast("Agent 报告已生成");
+    }
+  } catch (e) {
+    showToast(String(e), "error");
+  } finally {
+    btn.innerHTML = "✨ 重新推演";
+    btn.style.opacity = "1";
+    btn.style.pointerEvents = "auto";
+  }
+};
 
-  // 2. 模拟调用本地大模型 (后续可替换为 ipcRenderer 真实请求)
-  setTimeout(() => {
-    // 渲染画像总结
-    profileText.innerHTML =
-      "基于您近期收藏的 <b style='color:#fff'>高分记录</b>，系统发现您对特定番号格式及深色模式界面表现出浓厚兴趣。您的内容消费偏向于高质量、高连贯性的深度沉浸体验，且存在明显的夜间活跃特征。";
-
-    // 渲染偏好标签
-    tagsContainer.innerHTML = `
-      <span class="badge" style="border-color: #a855f7; color: #c084fc; background: rgba(168,85,247,0.1)">核心聚类: 格式化番号</span>
-      <span class="badge" style="border-color: #6366f1; color: #818cf8; background: rgba(99,102,241,0.1)">偏好标签: 深度沉浸</span>
-      <span class="badge" style="border-color: #3b82f6; color: #60a5fa; background: rgba(59,130,246,0.1)">活跃特征: 晚 22:00-02:00</span>
-    `;
-
-    // 渲染推荐假数据
-    const recs = [
-      {
-        id: "rec1",
-        title: "FC2-PPV-3019234 (高赞新作)",
-        domain: "最新存活节点.com",
-        reason: "基于您此前多次给 FC2 系列打出 80+ 高分",
-      },
-      {
-        id: "rec2",
-        title: "ABC-123 (匹配您的正则过滤库)",
-        domain: "伪装站-主干.com",
-        reason: "标题高度契合您的底层审美偏好",
-      },
-    ];
-
-    recContainer.innerHTML = recs
-      .map(
-        (r) => `
-      <div class="data-item">
+async function loadRecommendations() {
+  const container = document.getElementById("recommendationsContainer");
+  try {
+    const recs = await window.electronAPI.getRecommendations();
+    if (recs.length === 0) {
+      container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--muted-fg)">暂无推荐内容</div>';
+      return;
+    }
+    container.innerHTML = recs.map((r) => `
+      <div class="data-item" id="rec-${r.id}">
         <div class="item-body">
-          <div class="item-title" style="color: #e4e4e7;">${escapeHtml(r.title)}</div>
+          <div class="item-title">${escapeHtml(r.title)}</div>
           <div class="item-meta">
-            <span class="badge" style="background: rgba(168, 85, 247, 0.1); color: #c084fc; border-color: rgba(168, 85, 247, 0.3);">✨ 推荐理由: ${escapeHtml(r.reason)}</span>
+            <span class="badge" style="background: rgba(168,85,247,0.1); color: #c084fc; border-color: rgba(168,85,247,0.3);">✨ ${escapeHtml(r.reason || "")}</span>
             <span class="item-url">Source: ${escapeHtml(r.domain)}</span>
           </div>
         </div>
         <div class="item-actions">
-          <button class="btn-pin-text" style="color: #10b981; border-color: #10b981; background: transparent;" onclick="showToast('已录入正式追踪库'); this.closest('.data-item').style.opacity=0.3">吸收</button>
-          <button class="btn-pin-text" style="color: var(--muted-fg); border-color: var(--border); background: transparent;" onclick="this.closest('.data-item').remove()">排斥</button>
+          <button class="btn-pin-text" style="color: #10b981; border-color: #10b981; background: transparent;" data-action="rec-accept" data-id="${r.id}">吸收</button>
+          <button class="btn-pin-text" style="color: var(--muted-fg); border-color: var(--border); background: transparent;" data-action="rec-reject" data-id="${r.id}">排斥</button>
         </div>
       </div>
-    `,
-      )
-      .join("");
+    `).join("");
+  } catch (e) {
+    container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--muted-fg)">加载推荐失败</div>';
+  }
+}
 
-    // 恢复按钮状态
-    btn.innerHTML = "✨ 重新推演";
-    btn.style.opacity = "1";
-    btn.style.pointerEvents = "auto";
-    showToast("Agent 报告已生成", "success");
-  }, 1500); // 模拟 1.5s 延迟
+async function loadPendingActions() {
+  const btn = document.getElementById("btnAgentPending");
+  try {
+    const actions = await window.electronAPI.agentGetPending();
+    if (!actions || actions.length === 0) {
+      btn.style.display = "none";
+      return;
+    }
+    btn.style.display = "";
+    btn.textContent = `待审批 (${actions.length})`;
+  } catch (e) {
+    btn.style.display = "none";
+  }
+}
+
+document.getElementById("btnAutoClean").onclick = async function () {
+  if (!confirm("Agent 将扫描记录并建议清理。是否继续？")) return;
+  const btn = this;
+  btn.style.opacity = "0.7";
+  btn.style.pointerEvents = "none";
+  try {
+    const res = await window.electronAPI.agentAutoClean();
+    if (res.error) {
+      showToast(String(res.error), "error");
+    } else {
+      showToast("自动清理完成");
+      loadPendingActions();
+    }
+  } catch (e) {
+    showToast(String(e), "error");
+  }
+  btn.style.opacity = "1";
+  btn.style.pointerEvents = "auto";
+};
+
+document.getElementById("btnClearRecs").onclick = async function () {
+  if (!confirm("清空所有 AI 推荐？")) return;
+  await window.electronAPI.clearRecommendations();
+  document.getElementById("recommendationsContainer").innerHTML =
+    '<div style="padding:40px; text-align:center; color:var(--muted-fg)">暂无推荐内容</div>';
+  showToast("推荐已清空");
+};
+
+document.getElementById("recommendationsContainer").onclick = async function (e) {
+  const acceptBtn = e.target.closest("[data-action='rec-accept']");
+  const rejectBtn = e.target.closest("[data-action='rec-reject']");
+  if (acceptBtn) {
+    e.stopPropagation();
+    const id = acceptBtn.dataset.id;
+    await window.electronAPI.acceptRecommendation(id);
+    const item = document.getElementById("rec-" + id);
+    if (item) item.style.opacity = "0.3";
+    showToast("已录入追踪库");
+    refreshStats();
+    loadRecords(1);
+  }
+  if (rejectBtn) {
+    e.stopPropagation();
+    const id = rejectBtn.dataset.id;
+    await window.electronAPI.rejectRecommendation(id);
+    const item = document.getElementById("rec-" + id);
+    if (item) item.remove();
+    showToast("已从推荐中移除");
+  }
+};
+
+document.getElementById("btnAgentPending").onclick = async function () {
+  const actions = await window.electronAPI.agentGetPending();
+  if (!actions || actions.length === 0) { showToast("无待审批动作"); return; }
+  const lines = actions.map((a) =>
+    `工具: ${a.tool}\n参数: ${JSON.stringify(a.args, null, 2)}\n`
+  ).join("\n---\n");
+  if (confirm(`待审批 ${actions.length} 个动作:\n\n${lines}\n\n点确定批准全部，点取消驳回全部。`)) {
+    const ids = actions.map((a) => a.id);
+    await window.electronAPI.agentApproveActions(ids);
+    showToast("已批准");
+  } else {
+    const ids = actions.map((a) => a.id);
+    await window.electronAPI.agentDismissActions(ids);
+    showToast("已驳回");
+  }
+  loadPendingActions();
+  refreshStats();
+  loadRecords(1);
 };
 
 init();
