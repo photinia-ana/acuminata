@@ -175,8 +175,12 @@ function renderRecords() {
     }
     const color = getDomainColor(r.matchedRule);
     const isPinned = r.pinned ? true : false;
-    const favicon = r.favIconUrl ? `<img class="rec-favicon" src="${escapeHtml(r.favIconUrl)}" onerror="this.style.display='none'" />` : "";
-    const desc = r.description ? `<span class="item-url" style="max-width:240px; opacity:0.5">${escapeHtml(r.description.slice(0, 60))}</span>` : `<span class="item-url">${escapeHtml(r.url)}</span>`;
+    const favicon = r.favIconUrl
+      ? `<img class="rec-favicon" src="${escapeHtml(r.favIconUrl)}" onerror="this.style.display='none'" />`
+      : "";
+    const desc = r.description
+      ? `<span class="item-url" style="max-width:240px; opacity:0.5">${escapeHtml(r.description.slice(0, 60))}</span>`
+      : `<span class="item-url">${escapeHtml(r.url)}</span>`;
 
     html += `
       <div class="data-item" data-url="${encodeURIComponent(r.url)}">
@@ -415,7 +419,8 @@ async function init() {
 
   const aiCfg = await window.electronAPI.getAiConfig();
   document.getElementById("inputAiProvider").value = aiCfg.provider || "ollama";
-  document.getElementById("inputAiEndpoint").value = aiCfg.endpoint || "http://127.0.0.1:11434";
+  document.getElementById("inputAiEndpoint").value =
+    aiCfg.endpoint || "http://127.0.0.1:11434";
   document.getElementById("inputAiApiKey").value = aiCfg.apiKey || "";
   document.getElementById("inputAiModel").value = aiCfg.model || "qwen2.5:7b";
 }
@@ -432,6 +437,23 @@ window.electronAPI.onUpdate((data) => {
     refreshStats();
   } else if (data.type === "agentPendingUpdated") {
     loadPendingActions();
+  }
+  if (data.type === "agent_status") {
+    // ✅ 新增：拦截 Agent 思维状态并在界面上输出
+    const consoleBox = document.getElementById("agent-console-box"); // 假设您在 UI 里创建了这个终端容器
+    if (consoleBox) {
+      const msgLine = document.createElement("div");
+      // 用 JetBrains Mono 字体输出，带有打字机质感
+      msgLine.style.fontFamily = "'JetBrains Mono', monospace";
+      msgLine.style.fontSize = "12px";
+      msgLine.style.color = data.status === "paused" ? "#eab308" : "#a7a7a7"; // 等待审批标黄，其余默认灰色
+      msgLine.style.marginBottom = "4px";
+      msgLine.textContent = data.message;
+
+      consoleBox.appendChild(msgLine);
+      // 自动滚动到底部
+      consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
   }
 });
 
@@ -453,10 +475,14 @@ document.getElementById("btnRunAgent").onclick = async function () {
         `<span style="color: var(--danger)">分析失败: ${escapeHtml(analysis.error)}</span>`;
       showToast(String(analysis.error), "error");
     } else {
-      document.getElementById("aiProfileText").textContent = analysis.summary || "";
-      const tagsHtml = (analysis.keywords || []).map((kw) =>
-        `<span class="badge" style="border-color: var(--muted-fg); color: var(--foreground); background: var(--muted); font-size: 12px; padding: 3px 10px;">${escapeHtml(kw)}</span>`
-      ).join("");
+      document.getElementById("aiProfileText").textContent =
+        analysis.summary || "";
+      const tagsHtml = (analysis.keywords || [])
+        .map(
+          (kw) =>
+            `<span class="badge" style="border-color: var(--muted-fg); color: var(--foreground); background: var(--muted); font-size: 12px; padding: 3px 10px;">${escapeHtml(kw)}</span>`,
+        )
+        .join("");
       document.getElementById("aiTags").innerHTML = tagsHtml;
       loadRecommendations();
       loadPendingActions();
@@ -476,10 +502,13 @@ async function loadRecommendations() {
   try {
     const recs = await window.electronAPI.getRecommendations();
     if (recs.length === 0) {
-      container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--muted-fg)">暂无推荐内容</div>';
+      container.innerHTML =
+        '<div style="padding:40px; text-align:center; color:var(--muted-fg)">暂无推荐内容</div>';
       return;
     }
-    container.innerHTML = recs.map((r) => `
+    container.innerHTML = recs
+      .map(
+        (r) => `
       <div class="data-item" id="rec-${r.id}">
         <div class="item-body">
           <div class="item-title">${escapeHtml(r.title)}</div>
@@ -493,9 +522,12 @@ async function loadRecommendations() {
           <button class="btn-pin-text" style="color: var(--muted-fg); border-color: var(--border); background: transparent;" data-action="rec-reject" data-id="${r.id}">排斥</button>
         </div>
       </div>
-    `).join("");
+    `,
+      )
+      .join("");
   } catch (e) {
-    container.innerHTML = '<div style="padding:40px; text-align:center; color:var(--muted-fg)">加载推荐失败</div>';
+    container.innerHTML =
+      '<div style="padding:40px; text-align:center; color:var(--muted-fg)">加载推荐失败</div>';
   }
 }
 
@@ -542,7 +574,9 @@ document.getElementById("btnClearRecs").onclick = async function () {
   showToast("推荐已清空");
 };
 
-document.getElementById("recommendationsContainer").onclick = async function (e) {
+document.getElementById("recommendationsContainer").onclick = async function (
+  e,
+) {
   const acceptBtn = e.target.closest("[data-action='rec-accept']");
   const rejectBtn = e.target.closest("[data-action='rec-reject']");
   if (acceptBtn) {
@@ -567,11 +601,18 @@ document.getElementById("recommendationsContainer").onclick = async function (e)
 
 document.getElementById("btnAgentPending").onclick = async function () {
   const actions = await window.electronAPI.agentGetPending();
-  if (!actions || actions.length === 0) { showToast("无待审批动作"); return; }
-  const lines = actions.map((a) =>
-    `工具: ${a.tool}\n参数: ${JSON.stringify(a.args, null, 2)}\n`
-  ).join("\n---\n");
-  if (confirm(`待审批 ${actions.length} 个动作:\n\n${lines}\n\n点确定批准全部，点取消驳回全部。`)) {
+  if (!actions || actions.length === 0) {
+    showToast("无待审批动作");
+    return;
+  }
+  const lines = actions
+    .map((a) => `工具: ${a.tool}\n参数: ${JSON.stringify(a.args, null, 2)}\n`)
+    .join("\n---\n");
+  if (
+    confirm(
+      `待审批 ${actions.length} 个动作:\n\n${lines}\n\n点确定批准全部，点取消驳回全部。`,
+    )
+  ) {
     const ids = actions.map((a) => a.id);
     await window.electronAPI.agentApproveActions(ids);
     showToast("已批准");
