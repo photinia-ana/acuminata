@@ -10,13 +10,12 @@
         <style>
             :root {
                 --background: #000000;
-                --foreground: #fafafa;
-                --muted: #18181b;
-                --muted-fg: #a1a1aa;
+                --foreground: #ffffff;
+                --muted: #1a1a1a;
+                --muted-fg: #767d88;
                 --border: #27272a;
-                --accent: #1d1d20;
-                --primary: #fafafa;
-                --primary-fg: #18181b;
+                --primary: #ffffff;
+                --primary-fg: #000000;
                 --danger: #ef4444;
                 --warning: #f59e0b;
                 --radius: 8px;
@@ -33,6 +32,7 @@
                 color: var(--foreground);
                 font-family: var(--font-sans);
                 font-size: 14px;
+                line-height: 1.4;
                 height: 100vh;
                 display: flex;
                 overflow: hidden;
@@ -68,15 +68,15 @@
                 border-radius: var(--radius);
                 cursor: pointer;
                 color: var(--muted-fg);
-                font-weight: 500;
-                font-size: 13px;
+                font-weight: 400;
+                font-size: 14px;
                 transition: all 0.2s;
                 display: flex;
                 align-items: center;
                 gap: 10px;
             }
             .nav-item:hover {
-                background: var(--accent);
+                background: var(--muted);
                 color: var(--foreground);
             }
             .nav-item.active {
@@ -102,7 +102,6 @@
             }
             .ws-dot.on {
                 background: #10b981;
-                box-shadow: 0 0 8px #10b981;
             }
 
             /* --- Content --- */
@@ -124,8 +123,9 @@
             }
             h2 {
                 font-size: 24px;
-                font-weight: 600;
-                letter-spacing: -0.05em;
+                font-weight: 400;
+                line-height: 1.0;
+                letter-spacing: -0.5px;
                 margin-bottom: 24px;
             }
 
@@ -140,19 +140,22 @@
                 border: 1px solid var(--border);
                 border-radius: var(--radius);
                 padding: 20px;
-                background: #050505;
+                background: var(--muted);
             }
             .metric-title {
                 font-size: 13px;
                 color: var(--muted-fg);
-                font-weight: 500;
+                font-weight: 400;
+                letter-spacing: -0.16px;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
             }
             .metric-value {
                 font-size: 28px;
-                font-weight: 600;
+                font-weight: 400;
+                line-height: 1.0;
+                letter-spacing: -0.5px;
                 margin-top: 8px;
                 font-family: var(--font-mono);
             }
@@ -189,31 +192,32 @@
             }
             .filter-chip {
                 padding: 4px 12px;
-                border-radius: 99px;
+                border-radius: var(--radius);
                 border: 1px solid var(--border);
                 font-size: 11px;
                 cursor: pointer;
                 color: var(--muted-fg);
-                background: #050505;
+                background: transparent;
                 white-space: nowrap;
+                font-weight: 400;
             }
             .filter-chip.active {
-                background: var(--primary);
-                color: var(--primary-fg);
-                border-color: var(--primary);
+                color: var(--foreground);
+                border-color: var(--foreground);
+                background: transparent;
             }
 
             /* --- Data List --- */
             .data-list {
                 border: 1px solid var(--border);
                 border-radius: var(--radius);
-                background: #050505;
+                background: var(--muted);
             }
             .date-group-header {
                 padding: 12px 20px;
-                background: #0a0a0a;
+                background: var(--muted);
                 font-size: 11px;
-                font-weight: 600;
+                font-weight: 500;
                 color: var(--muted-fg);
                 font-family: var(--font-mono);
                 border-bottom: 1px solid var(--border);
@@ -228,7 +232,7 @@
                 gap: 14px;
             }
             .data-item:hover {
-                background: var(--accent);
+                background: var(--muted);
             }
             .rec-checkbox {
                 appearance: none;
@@ -256,7 +260,7 @@
                 min-width: 0;
             }
             .item-title {
-                font-weight: 500;
+                font-weight: 400;
                 font-size: 14px;
                 white-space: nowrap;
                 overflow: hidden;
@@ -277,6 +281,13 @@
                 text-overflow: ellipsis;
                 white-space: nowrap;
                 max-width: 300px;
+            }
+            .rec-favicon {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                flex-shrink: 0;
+                margin-top: 2px;
             }
             .item-actions {
                 display: flex;
@@ -328,7 +339,7 @@
                 text-align: center;
                 font-family: var(--font-mono);
                 font-size: 11px;
-                color: var(--warning);
+                color: var(--muted-fg);
             }
 
             /* --- Settings --- */
@@ -344,8 +355,10 @@
                 gap: 16px;
             }
             .setting-header {
-                font-size: 16px;
-                font-weight: 600;
+                font-size: 14px;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.35px;
                 border-bottom: 1px solid var(--border);
                 padding-bottom: 8px;
             }
@@ -366,18 +379,25 @@
             }
             .btn {
                 padding: 8px 16px;
-                border-radius: var(--radius);
-                font-size: 13px;
-                font-weight: 600;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: 500;
                 cursor: pointer;
                 border: 1px solid var(--border);
                 transition: 0.2s;
-                background: var(--primary);
-                color: var(--primary-fg);
+                background: transparent;
+                color: var(--muted-fg);
+            }
+            .btn:hover {
+                color: var(--foreground);
+                border-color: var(--foreground);
             }
             .btn-ghost {
                 background: transparent;
                 color: var(--muted-fg);
+            }
+            .btn-ghost:hover {
+                color: var(--foreground);
             }
             .btn-danger {
                 color: var(--danger);
@@ -385,8 +405,7 @@
                 background: transparent;
             }
             .btn-danger:hover {
-                background: var(--danger);
-                color: #fff;
+                border-color: var(--danger);
             }
 
             /* --- Toast --- */
@@ -395,7 +414,7 @@
                 bottom: 24px;
                 right: 24px;
                 padding: 12px 20px;
-                background: #18181b;
+                background: var(--muted);
                 border: 1px solid var(--border);
                 border-radius: var(--radius);
                 font-size: 13px;
@@ -440,11 +459,10 @@
                         /></svg
                     >监控历史
                 </div>
-                <div class="nav-item" data-target="ai-agent" style="color: #a855f7;">
+                <div class="nav-item" data-target="ai-agent">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
                         AI 智能助理
-                      </div>
-                      <div class="nav-item" data-target="settings">
+                </div>
                 <div class="nav-item" data-target="settings">
                     <svg
                         width="16"
@@ -527,13 +545,13 @@
             <div id="ai-agent" class="tab-panel">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                     <h2>AI 智能助理</h2>
-                    <button class="btn" id="btnRunAgent" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none; color: #fff;">
+                    <button class="btn" id="btnRunAgent">
                       唤醒 Agent 分析
                     </button>
                   </div>
 
-                  <div class="card" style="margin-bottom: 32px; border-color: rgba(168, 85, 247, 0.3); background: linear-gradient(180deg, rgba(168, 85, 247, 0.05) 0%, #000 100%);">
-                    <div class="setting-header" style="color: #c084fc; border-bottom-color: rgba(168, 85, 247, 0.2);">您的专属数字画像</div>
+                  <div class="card" style="margin-bottom: 32px;">
+                    <div class="setting-header">您的专属数字画像</div>
                     <p id="aiProfileText" style="color: var(--muted-fg); margin-top: 16px; line-height: 1.6; font-size: 13px;">
                       Agent 正在沉睡。点击右上角按钮，允许 Agent 读取您本地的高分记录并生成口味分析报告...
                     </p>

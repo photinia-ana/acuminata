@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import logoIcon from "url:~assets/icon.png"
 
 interface WatchlistEntry {
   domain: string
@@ -14,6 +15,12 @@ interface HistoryRecord {
   matchedRule: string
   tabId: number
   timestamp: number
+  pinned?: number
+  score?: number | null
+  favIconUrl?: string
+  description?: string
+  ogImage?: string
+  dwellTime?: number
 }
 
 function escapeHtml(str: string): string {
@@ -25,9 +32,40 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#39;")
 }
 
+function formatTime(ts: number): string {
+  const d = new Date(ts)
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
+  if (diff < 60000) return "刚刚"
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+  }
+  return d.toLocaleDateString("zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function dateGroupLabel(ts: number): string {
+  const d = new Date(ts)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (d.toDateString() === today.toDateString()) return "今天"
+  if (d.toDateString() === yesterday.toDateString()) return "昨天"
+  return d.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+}
+
 const s: Record<string, React.CSSProperties> = {
   layout: {
-    maxWidth: 860,
+    maxWidth: 960,
     margin: "0 auto",
     padding: "40px 24px 80px",
   },
@@ -37,269 +75,432 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     marginBottom: 48,
     paddingBottom: 24,
-    borderBottom: "1px solid #2a2f42",
+    borderBottom: "1px solid var(--border)",
   },
   logoWrap: {
     display: "flex",
     alignItems: "center",
-    gap: 14,
-  },
-  logoIcon: {
-    width: 44,
-    height: 44,
-    background: "linear-gradient(135deg, #5b8dee, #e85d8a)",
-    borderRadius: 12,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 22,
+    gap: 12,
   },
   logoTitle: {
     fontSize: 18,
-    fontWeight: 700,
-    letterSpacing: "-0.3px",
+    fontWeight: 600,
   },
   logoSub: {
-    fontSize: 12,
-    color: "#7a80a0",
-    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: 13,
+    color: "var(--muted-fg)",
+    fontWeight: 500,
   },
   toggleWrap: {
     display: "flex",
     alignItems: "center",
     gap: 10,
     fontSize: 13,
-    color: "#7a80a0",
+    color: "var(--muted-fg)",
+    fontWeight: 500,
   },
-  toggle: {
+  toggleSlider: {
     position: "relative",
-    width: 44,
-    height: 24,
-  },
-  toggleInput: {
-    opacity: 0,
-    width: 0,
-    height: 0,
-    position: "absolute",
+    width: 36,
+    height: 20,
   },
   sliderOn: {
     position: "absolute",
     inset: 0,
-    background: "#5b8dee",
-    borderRadius: 24,
+    background: "var(--primary)",
+    borderRadius: 20,
     cursor: "pointer",
   },
   sliderOff: {
     position: "absolute",
     inset: 0,
-    background: "#2a2f42",
-    borderRadius: 24,
+    background: "var(--border)",
+    borderRadius: 20,
     cursor: "pointer",
   },
   sliderDot: {
     position: "absolute",
-    width: 18,
-    height: 18,
+    width: 14,
+    height: 14,
     left: 3,
     top: 3,
-    background: "white",
+    background: "var(--primary-fg)",
     borderRadius: "50%",
     transition: "transform 0.25s",
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 600,
+    letterSpacing: "-0.05em",
+    marginBottom: 24,
+  },
+  gridMetrics: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+    gap: 16,
+    marginBottom: 32,
+  },
+  card: {
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: 20,
+    background: "#050505",
+  },
+  metricTitle: {
+    fontSize: 13,
+    color: "var(--muted-fg)",
+    fontWeight: 500,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  metricValue: {
+    fontSize: 28,
+    fontWeight: 600,
+    marginTop: 8,
+    fontFamily: "var(--font-mono)",
   },
   section: {
     marginBottom: 40,
   },
   sectionHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "1.2px",
-    color: "#7a80a0",
-    fontFamily: "'JetBrains Mono', monospace",
-  },
-  addForm: {
-    background: "#161921",
-    border: "1px solid #2a2f42",
-    borderRadius: 14,
-    padding: 20,
+    borderBottom: "1px solid var(--border)",
+    paddingBottom: 8,
     marginBottom: 16,
+  },
+  setGrp: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 32,
+    maxWidth: 800,
   },
   formRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 160px 80px auto",
-    gap: 10,
-    alignItems: "end",
+    display: "flex",
+    gap: 12,
   },
-  fieldLabel: {
-    display: "block",
-    fontSize: 11,
-    color: "#7a80a0",
-    fontFamily: "'JetBrains Mono', monospace",
-    marginBottom: 6,
-    letterSpacing: "0.5px",
-  },
-  fieldInput: {
-    width: "100%",
-    background: "#0d0f14",
-    border: "1px solid #2a2f42",
-    borderRadius: 8,
-    padding: "9px 12px",
-    color: "#e4e8f5",
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: 13,
+  input: {
+    background: "#000000",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: "8px 12px",
+    color: "#ffffff",
     outline: "none",
+    fontSize: 13,
+    fontFamily: "var(--font-mono)",
+    flex: 1,
+  },
+  inputFocus: {
+    borderColor: "var(--muted-fg)",
   },
   colorInput: {
-    width: "100%",
-    height: 37,
-    borderRadius: 8,
-    border: "1px solid #2a2f42",
-    background: "#0d0f14",
-    cursor: "pointer",
-    padding: "2px 4px",
-    outline: "none",
-  },
-  btnPrimary: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "9px 16px",
-    borderRadius: 8,
+    width: 44,
+    height: 38,
     border: "none",
+    background: "none",
     cursor: "pointer",
+    padding: 0,
+  },
+  btn: {
+    padding: "8px 16px",
+    borderRadius: "var(--radius)",
     fontSize: 13,
     fontWeight: 600,
-    fontFamily: "'Noto Sans SC', sans-serif",
-    background: "#5b8dee",
-    color: "white",
-    whiteSpace: "nowrap",
+    cursor: "pointer",
+    border: "1px solid var(--border)",
+    transition: "background 0.2s, color 0.2s",
+    background: "var(--primary)",
+    color: "var(--primary-fg)",
+    fontFamily: "var(--font-sans)",
+  },
+  btnGhost: {
+    padding: "8px 16px",
+    borderRadius: "var(--radius)",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    border: "1px solid var(--border)",
+    transition: "background 0.2s, color 0.2s",
+    background: "transparent",
+    color: "var(--muted-fg)",
+    fontFamily: "var(--font-sans)",
   },
   btnDanger: {
-    background: "transparent",
-    color: "#e85d5d",
-    border: "1px solid #e85d5d",
-    padding: "5px 10px",
-    fontSize: 12,
-    borderRadius: 8,
+    padding: "8px 16px",
+    borderRadius: "var(--radius)",
+    fontSize: 13,
+    fontWeight: 600,
     cursor: "pointer",
-    fontFamily: "'Noto Sans SC', sans-serif",
+    border: "1px solid rgba(239,68,68,0.2)",
+    transition: "background 0.2s, color 0.2s",
+    background: "transparent",
+    color: "var(--danger)",
+    fontFamily: "var(--font-sans)",
   },
-  watchlist: {
+  watchList: {
     display: "flex",
     flexDirection: "column",
     gap: 8,
   },
   watchItem: {
-    background: "#161921",
-    border: "1px solid #2a2f42",
-    borderRadius: 10,
-    padding: "14px 16px",
     display: "flex",
     alignItems: "center",
-    gap: 14,
+    justifyContent: "space-between",
+    padding: "10px 14px",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    background: "#0a0a0a",
+  },
+  watchItemLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
   },
   colorDot: {
-    width: 10,
-    height: 10,
+    width: 8,
+    height: 8,
     borderRadius: "50%",
     flexShrink: 0,
   },
   watchDomain: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: 14,
+    fontFamily: "var(--font-mono)",
     fontWeight: 600,
-    flex: 1,
+    fontSize: 14,
   },
   watchLabel: {
-    fontSize: 12,
-    color: "#7a80a0",
-    background: "#1e2230",
-    padding: "3px 8px",
+    fontFamily: "var(--font-mono)",
+    fontSize: 10,
+    padding: "1px 8px",
     borderRadius: 4,
+    background: "var(--muted)",
+    border: "1px solid var(--border)",
+    color: "var(--muted-fg)",
+  },
+  watchRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
   },
   watchCount: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: 12,
-    color: "#5b8dee",
-    minWidth: 60,
-    textAlign: "right",
+    fontFamily: "var(--font-mono)",
+    fontSize: 11,
+    color: "var(--muted-fg)",
+  },
+  btnSm: {
+    padding: "4px 8px",
+    fontSize: 11,
+    fontWeight: 600,
+    borderRadius: 6,
+    cursor: "pointer",
+    border: "1px solid var(--border)",
+    background: "transparent",
+    color: "var(--muted-fg)",
+    fontFamily: "var(--font-sans)",
+  },
+  toolbar: {
+    display: "flex",
+    gap: 12,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  searchInput: {
+    flex: 1,
+    background: "#000000",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: "8px 14px",
+    color: "#ffffff",
+    outline: "none",
+    fontSize: 13,
+    fontFamily: "var(--font-mono)",
+    maxWidth: 360,
+  },
+  filterBar: {
+    display: "flex",
+    gap: 8,
+    overflowX: "auto",
+    paddingBottom: 4,
+    marginBottom: 16,
+  },
+  filterChip: {
+    padding: "4px 12px",
+    borderRadius: 99,
+    border: "1px solid var(--border)",
+    fontSize: 11,
+    cursor: "pointer",
+    color: "var(--muted-fg)",
+    background: "#050505",
+    whiteSpace: "nowrap",
+    fontWeight: 500,
+    fontFamily: "var(--font-mono)",
+  },
+  filterChipActive: {
+    padding: "4px 12px",
+    borderRadius: 99,
+    border: "1px solid var(--primary)",
+    fontSize: 11,
+    cursor: "pointer",
+    color: "var(--primary-fg)",
+    background: "var(--primary)",
+    whiteSpace: "nowrap",
+    fontWeight: 500,
+    fontFamily: "var(--font-mono)",
+  },
+  dataList: {
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    background: "#050505",
+  },
+  dateHeader: {
+    padding: "12px 20px",
+    background: "#0a0a0a",
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--muted-fg)",
+    fontFamily: "var(--font-mono)",
+    borderBottom: "1px solid var(--border)",
+  },
+  dataItem: {
+    display: "flex",
+    alignItems: "center",
+    padding: "14px 20px",
+    borderBottom: "1px solid var(--border)",
+    cursor: "pointer",
+    gap: 14,
+    transition: "background 0.1s",
+  },
+  itemBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  itemTitle: {
+    fontWeight: 500,
+    fontSize: 14,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    marginBottom: 2,
+  },
+  itemMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 11,
+    color: "var(--muted-fg)",
+  },
+  itemUrl: {
+    fontFamily: "var(--font-mono)",
+    opacity: 0.5,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: 300,
+  },
+  badge: {
+    padding: "1px 8px",
+    borderRadius: 4,
+    background: "var(--muted)",
+    border: "1px solid var(--border)",
+    fontSize: 10,
+    fontFamily: "var(--font-mono)",
+    color: "var(--muted-fg)",
+  },
+  itemActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexShrink: 0,
+  },
+  btnPin: {
+    padding: "4px 10px",
+    borderRadius: 6,
+    border: "1px solid var(--border)",
+    fontSize: 11,
+    fontWeight: 600,
+    fontFamily: "var(--font-mono)",
+    cursor: "pointer",
+    color: "var(--muted-fg)",
+    background: "transparent",
+    transition: "0.2s",
+  },
+  btnPinOn: {
+    padding: "4px 10px",
+    borderRadius: 6,
+    border: "1px solid var(--warning)",
+    fontSize: 11,
+    fontWeight: 600,
+    fontFamily: "var(--font-mono)",
+    cursor: "pointer",
+    color: "var(--warning)",
+    background: "rgba(245,158,11,0.1)",
+    transition: "0.2s",
   },
   emptyState: {
     textAlign: "center",
     padding: 40,
-    color: "#7a80a0",
-    fontSize: 14,
-    background: "#161921",
-    border: "1px dashed #2a2f42",
-    borderRadius: 14,
+    color: "var(--muted-fg)",
+    fontSize: 13,
   },
-  statsBar: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 12,
-    marginBottom: 32,
+  modeSection: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    background: "#050505",
   },
-  statCard: {
-    background: "#161921",
-    border: "1px solid #2a2f42",
-    borderRadius: 12,
-    padding: "16px 20px",
+  modeLeft: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
   },
-  statValue: {
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: 28,
-    fontWeight: 600,
-    color: "#5b8dee",
-    lineHeight: 1,
-    marginBottom: 4,
+  modeTitle: { fontSize: 14, fontWeight: 600 },
+  modeDesc: { fontSize: 11, color: "var(--muted-fg)", fontWeight: 400 },
+  modeToggle: {
+    display: "flex",
+    background: "#000000",
+    borderRadius: "var(--radius)",
+    border: "1px solid var(--border)",
+    overflow: "hidden",
   },
-  statLabel: {
+  modeOption: {
+    padding: "6px 16px",
     fontSize: 12,
-    color: "#7a80a0",
+    cursor: "pointer",
+    fontFamily: "var(--font-mono)",
+    color: "var(--muted-fg)",
+    background: "transparent",
+    border: "none",
+    outline: "none",
+    whiteSpace: "nowrap" as const,
   },
-  actionRow: {
+  modeOptionActive: {
+    padding: "6px 16px",
+    fontSize: 12,
+    cursor: "pointer",
+    fontFamily: "var(--font-mono)",
+    color: "var(--primary-fg)",
+    background: "var(--primary)",
+    border: "none",
+    outline: "none",
+    whiteSpace: "nowrap" as const,
+  },
+  btnRow: {
     display: "flex",
     gap: 12,
     flexWrap: "wrap",
-  },
-  btnExport: {
-    background: "#161921",
-    color: "#52c97a",
-    border: "1px solid #52c97a",
-    padding: "9px 16px",
-    fontSize: 13,
-    borderRadius: 8,
-    cursor: "pointer",
-    fontFamily: "'Noto Sans SC', sans-serif",
-  },
-  btnClear: {
-    background: "#161921",
-    color: "#e85d5d",
-    border: "1px solid #e85d5d",
-    padding: "9px 16px",
-    fontSize: 13,
-    borderRadius: 8,
-    cursor: "pointer",
-    fontFamily: "'Noto Sans SC', sans-serif",
   },
   toast: {
     position: "fixed",
     bottom: 24,
     right: 24,
-    background: "#1e2230",
-    border: "1px solid #2a2f42",
-    borderRadius: 10,
-    padding: "12px 18px",
+    padding: "12px 20px",
+    background: "var(--muted)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
     fontSize: 13,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
     zIndex: 999,
   },
 }
@@ -308,13 +509,22 @@ function OptionsIndex() {
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([])
   const [records, setRecords] = useState<HistoryRecord[]>([])
   const [enabled, setEnabled] = useState(true)
+  const [mode, setMode] = useState("ws")
   const [inputDomain, setInputDomain] = useState("")
   const [inputLabel, setInputLabel] = useState("")
   const [inputColor, setInputColor] = useState("#5b8dee")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [activeFilter, setActiveFilter] = useState("all")
   const [toast, setToast] = useState<{
     msg: string
     type: "success" | "error"
   } | null>(null)
+  const [aiProvider, setAiProvider] = useState("ollama")
+  const [aiEndpoint, setAiEndpoint] = useState("http://127.0.0.1:11434")
+  const [aiApiKey, setAiApiKey] = useState("")
+  const [aiModel, setAiModel] = useState("qwen2.5:7b")
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiResult, setAiResult] = useState<{ summary: string; keywords: string[] } | null>(null)
 
   useEffect(() => {
     loadData()
@@ -325,10 +535,20 @@ function OptionsIndex() {
       "watchlist",
       "records",
       "enabled",
+      "mode",
+      "aiProvider",
+      "aiEndpoint",
+      "aiApiKey",
+      "aiModel",
     ])
     setWatchlist((data.watchlist as WatchlistEntry[]) || [])
     setRecords((data.records as HistoryRecord[]) || [])
     setEnabled(data.enabled !== false)
+    setMode((data.mode as string) || "ws")
+    setAiProvider((data.aiProvider as string) || "ollama")
+    setAiEndpoint((data.aiEndpoint as string) || "http://127.0.0.1:11434")
+    setAiApiKey((data.aiApiKey as string) || "")
+    setAiModel((data.aiModel as string) || "qwen2.5:7b")
   }
 
   function showToast(msg: string, type: "success" | "error") {
@@ -336,9 +556,32 @@ function OptionsIndex() {
     setTimeout(() => setToast(null), 2500)
   }
 
+  function getDomainColor(domain: string): string {
+    const entry = watchlist.find((e) => e.domain === domain || e.label === domain)
+    return entry?.color || "var(--muted-fg)"
+  }
+
   const counts: Record<string, number> = {}
   for (const r of records) {
     counts[r.matchedRule] = (counts[r.matchedRule] || 0) + 1
+  }
+
+  const domains = [...new Set(records.map((r) => r.matchedRule))]
+
+  let filtered = records
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase()
+    filtered = filtered.filter(
+      (r) =>
+        (r.title && r.title.toLowerCase().includes(q)) ||
+        (r.url && r.url.toLowerCase().includes(q)) ||
+        (r.matchedRule && r.matchedRule.toLowerCase().includes(q)),
+    )
+  }
+  if (activeFilter === "pinned") {
+    filtered = filtered.filter((r) => r.pinned)
+  } else if (activeFilter !== "all") {
+    filtered = filtered.filter((r) => r.matchedRule === activeFilter)
   }
 
   const todayStart = new Date()
@@ -346,6 +589,8 @@ function OptionsIndex() {
   const todayCount = records.filter(
     (r) => r.timestamp >= todayStart.getTime(),
   ).length
+
+  const topDomain = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
 
   async function addEntry() {
     const domain = inputDomain
@@ -394,6 +639,17 @@ function OptionsIndex() {
     showToast(val ? "追踪已开启" : "追踪已暂停", "success")
   }
 
+  async function togglePin(id: string) {
+    setRecords((prev) =>
+      prev.map((r) =>
+        r.id === id
+          ? { ...r, pinned: r.pinned ? 0 : 1, score: !r.pinned && r.score == null ? 50 : r.score }
+          : r,
+      ),
+    )
+    chrome.runtime.sendMessage({ type: "TOGGLE_RECORD_PIN", id })
+  }
+
   async function exportData() {
     const data = await chrome.storage.local.get(["records", "watchlist"])
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -415,21 +671,146 @@ function OptionsIndex() {
     showToast("已清空所有记录", "success")
   }
 
+  async function setModeAndPersist(newMode: string) {
+    setMode(newMode)
+    await chrome.storage.local.set({ mode: newMode })
+    chrome.runtime.sendMessage({ type: "SET_MODE", mode: newMode })
+    showToast(
+      newMode === "ws" ? "已切换至 WebSocket 模式" : "已切换至本地模式",
+      "success",
+    )
+  }
+
+  async function saveAiConfig() {
+    await chrome.storage.local.set({ aiProvider, aiEndpoint, aiApiKey, aiModel })
+    chrome.runtime.sendMessage({ type: "SET_AI_CONFIG", provider: aiProvider, endpoint: aiEndpoint, apiKey: aiApiKey, model: aiModel })
+    showToast("AI 配置已保存", "success")
+  }
+
+  async function runAnalysis() {
+    setAiLoading(true)
+    setAiResult(null)
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "AI_ANALYZE" })
+      if (res.error) {
+        showToast(String(res.error), "error")
+      } else {
+        setAiResult({ summary: res.summary || "", keywords: res.keywords || [] })
+      }
+    } catch (e) {
+      showToast(String(e), "error")
+    }
+    setAiLoading(false)
+  }
+
+  function renderRecordsList() {
+    let currentGroup = ""
+    const rows: React.ReactNode[] = []
+
+    filtered.forEach((r) => {
+      const dateLabel = dateGroupLabel(r.timestamp)
+      if (dateLabel !== currentGroup) {
+        currentGroup = dateLabel
+        rows.push(
+          <div key={`h-${dateLabel}`} style={s.dateHeader}>
+            {dateLabel}
+          </div>,
+        )
+      }
+      const color = getDomainColor(r.matchedRule)
+      const isPinned = !!r.pinned
+
+      rows.push(
+        <div
+          key={r.id}
+          style={s.dataItem}
+          className="data-item"
+          data-url={encodeURIComponent(r.url)}
+          onClick={(e) => {
+            const target = e.target as HTMLElement
+            if (target.closest("[data-action]")) return
+            chrome.tabs.create({ url: r.url })
+          }}>
+          {r.favIconUrl ? (
+            <img
+              src={r.favIconUrl}
+              style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 2 }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+            />
+          ) : null}
+          <div style={s.itemBody}>
+            <div style={s.itemTitle}>
+              {escapeHtml(r.title || r.url)}
+            </div>
+            <div style={s.itemMeta}>
+              <span style={{ ...s.badge, borderColor: color, color }}>
+                {escapeHtml(r.matchedRule)}
+              </span>
+              <span>{formatTime(r.timestamp)}</span>
+              {r.description ? (
+                <span style={{ ...s.itemUrl, maxWidth: 240, color: "var(--muted-fg)", opacity: 0.7 }}>
+                  {escapeHtml(r.description.slice(0, 60))}
+                </span>
+              ) : (
+                <span style={s.itemUrl}>
+                  {escapeHtml(r.url)}
+                </span>
+              )}
+            </div>
+          </div>
+          <div style={s.itemActions}>
+            <button
+              style={isPinned ? s.btnPinOn : s.btnPin}
+              data-action="pin"
+              onClick={(e) => {
+                e.stopPropagation()
+                togglePin(r.id)
+              }}>
+              {isPinned
+                ? `Pinned${r.score ? ` ${r.score}` : ""}`
+                : "Pin"}
+            </button>
+          </div>
+        </div>,
+      )
+    })
+
+    return rows
+  }
+
   return (
     <div
       style={{
-        background: "#0d0f14",
-        color: "#e4e8f5",
-        fontFamily: "'Noto Sans SC', sans-serif",
+        background: "var(--background)",
+        color: "var(--foreground)",
+        fontFamily: "var(--font-sans)",
+        fontSize: 14,
         minHeight: "100vh",
-        lineHeight: 1.6,
       }}>
-      <style>{`* { box-sizing: border-box; margin: 0; padding: 0; }`}</style>
+      <style>{`
+        :root {
+          --background: #000000;
+          --foreground: #ffffff;
+          --muted: #1a1a1a;
+          --muted-fg: #767d88;
+          --border: #27272a;
+          --primary: #ffffff;
+          --primary-fg: #000000;
+          --danger: #ef4444;
+          --warning: #f59e0b;
+          --radius: 8px;
+          --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+          --font-mono: 'JetBrains Mono', 'Consolas', 'Cascadia Code', monospace;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        .data-item:hover { background: var(--muted) !important; }
+        .search-input:focus { border-color: var(--muted-fg) !important; }
+      `}</style>
       <div style={s.layout}>
         {/* Header */}
         <div style={s.header}>
           <div style={s.logoWrap}>
-            <div style={s.logoIcon}>📡</div>
+            <img src={logoIcon} style={{ width: 36, height: 36 }} />
             <div>
               <div style={s.logoTitle}>Acuminata</div>
               <div style={s.logoSub}>浏览记录追踪器 · 设置</div>
@@ -437,12 +818,7 @@ function OptionsIndex() {
           </div>
           <div style={s.toggleWrap}>
             <span>{enabled ? "追踪中" : "已暂停"}</span>
-            <label
-              style={{
-                position: "relative",
-                width: 44,
-                height: 24,
-              }}>
+            <label style={s.toggleSlider}>
               <input
                 type="checkbox"
                 checked={enabled}
@@ -454,13 +830,11 @@ function OptionsIndex() {
                   position: "absolute",
                 }}
               />
-              <span
-                style={enabled ? s.sliderOn : s.sliderOff}
-              />
+              <span style={enabled ? s.sliderOn : s.sliderOff} />
               <span
                 style={
                   enabled
-                    ? { ...s.sliderDot, transform: "translateX(20px)" }
+                    ? { ...s.sliderDot, transform: "translateX(16px)" }
                     : s.sliderDot
                 }
               />
@@ -468,118 +842,300 @@ function OptionsIndex() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div style={s.statsBar}>
-          <div style={s.statCard}>
-            <div style={s.statValue}>{records.length}</div>
-            <div style={s.statLabel}>总记录数</div>
+        {/* Metrics */}
+        <div style={s.gridMetrics}>
+          <div style={s.card}>
+            <div style={s.metricTitle}>总记录数</div>
+            <div style={s.metricValue}>{records.length}</div>
           </div>
-          <div style={s.statCard}>
-            <div style={s.statValue}>{watchlist.length}</div>
-            <div style={s.statLabel}>追踪站点数</div>
+          <div style={s.card}>
+            <div style={s.metricTitle}>今日捕获</div>
+            <div style={s.metricValue}>{todayCount}</div>
           </div>
-          <div style={s.statCard}>
-            <div style={s.statValue}>{todayCount}</div>
-            <div style={s.statLabel}>今日记录</div>
+          <div style={s.card}>
+            <div style={s.metricTitle}>监控站点</div>
+            <div style={s.metricValue}>{watchlist.length}</div>
+          </div>
+          <div style={s.card}>
+            <div style={s.metricTitle}>最常访问</div>
+            <div style={{ ...s.metricValue, fontSize: 16 }}>
+              {topDomain ? topDomain[0] : "-"}
+            </div>
           </div>
         </div>
 
-        {/* Watchlist Management */}
-        <div style={s.section}>
-          <div style={s.sectionHeader}>
-            <div style={s.sectionTitle}>追踪站点配置</div>
+        {/* Settings */}
+        <div style={s.title}>设置</div>
+        <div style={s.setGrp}>
+          {/* Global Toggle */}
+          <div style={s.card}>
+            <div style={s.sectionHeader}>全局开关</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ color: "var(--muted-fg)", fontSize: 13 }}>
+                {enabled ? "追踪开启中" : "追踪已暂停"}
+              </span>
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => toggleEnabled(e.target.checked)}
+                style={{ width: 20, height: 20, accentColor: "var(--primary)" }}
+              />
+            </div>
           </div>
 
-          <div style={s.addForm}>
-            <div style={s.formRow}>
-              <div>
-                <label style={s.fieldLabel}>域名 DOMAIN</label>
-                <input
-                  style={s.fieldInput}
-                  type="text"
-                  placeholder="bilibili.com"
-                  value={inputDomain}
-                  onChange={(e) => setInputDomain(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") addEntry()
-                  }}
-                />
+          {/* Watchlist */}
+          <div style={s.card}>
+            <div style={s.sectionHeader}>添加监控组</div>
+            <div style={{ ...s.formRow, marginBottom: 12 }}>
+              <input
+                type="text"
+                className="search-input"
+                style={s.input}
+                placeholder="域名 (e.g. bilibili.com)"
+                value={inputDomain}
+                onChange={(e) => setInputDomain(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addEntry()
+                }}
+              />
+              <input
+                type="text"
+                className="search-input"
+                style={s.input}
+                placeholder="备注 (e.g. B站)"
+                value={inputLabel}
+                onChange={(e) => setInputLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addEntry()
+                }}
+              />
+              <input
+                type="color"
+                value={inputColor}
+                onChange={(e) => setInputColor(e.target.value)}
+                style={s.colorInput}
+              />
+              <button style={s.btn} onClick={addEntry}>
+                添加站点
+              </button>
+            </div>
+            <div style={s.sectionHeader}>已监控列表</div>
+            <div style={s.watchList}>
+              {watchlist.length === 0 ? (
+                <div style={s.emptyState}>暂无监控站点</div>
+              ) : (
+                watchlist.map((entry, idx) => (
+                  <div key={idx} style={s.watchItem}>
+                    <div style={s.watchItemLeft}>
+                      <div
+                        style={{
+                          ...s.colorDot,
+                          background: entry.color || "var(--muted-fg)",
+                        }}
+                      />
+                      <span style={s.watchDomain}>
+                        {escapeHtml(entry.domain)}
+                      </span>
+                      <span style={s.watchLabel}>
+                        {escapeHtml(entry.label || "未命名")}
+                      </span>
+                    </div>
+                    <div style={s.watchRight}>
+                      <span style={s.watchCount}>
+                        {counts[entry.domain] || 0} 条
+                      </span>
+                      <button
+                        style={s.btnSm}
+                        onClick={() => removeEntry(idx)}>
+                        移除
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Mode */}
+          <div style={s.card}>
+            <div style={s.sectionHeader}>运行模式</div>
+            <div style={s.modeSection}>
+              <div style={s.modeLeft}>
+                <div style={s.modeTitle}>
+                  {mode === "ws" ? "WebSocket 模式" : "本地模式"}
+                </div>
+                <div style={s.modeDesc}>
+                  {mode === "ws"
+                    ? "连接本地 WS 服务端，数据双向同步"
+                    : "仅在本地存储浏览记录，不连接外部服务"}
+                </div>
               </div>
-              <div>
-                <label style={s.fieldLabel}>备注 LABEL</label>
-                <input
-                  style={s.fieldInput}
-                  type="text"
-                  placeholder="B站"
-                  value={inputLabel}
-                  onChange={(e) => setInputLabel(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") addEntry()
-                  }}
-                />
-              </div>
-              <div>
-                <label style={s.fieldLabel}>颜色 COLOR</label>
-                <input
-                  style={s.colorInput}
-                  type="color"
-                  value={inputColor}
-                  onChange={(e) => setInputColor(e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={s.fieldLabel}>&nbsp;</label>
-                <button style={s.btnPrimary} onClick={addEntry}>
-                  + 添加
+              <div style={s.modeToggle}>
+                <button
+                  style={mode === "ws" ? s.modeOptionActive : s.modeOption}
+                  onClick={() => setModeAndPersist("ws")}>
+                  WS
+                </button>
+                <button
+                  style={mode === "local" ? s.modeOptionActive : s.modeOption}
+                  onClick={() => setModeAndPersist("local")}>
+                  本地
                 </button>
               </div>
             </div>
           </div>
 
-          <div style={s.watchlist}>
-            {watchlist.length === 0 ? (
-              <div style={s.emptyState}>暂无追踪站点，请在上方添加</div>
-            ) : (
-              watchlist.map((entry, idx) => (
-                <div key={idx} style={s.watchItem}>
-                  <div
-                    style={{
-                      ...s.colorDot,
-                      background: entry.color || "#5b8dee",
-                    }}
-                  />
-                  <div style={s.watchDomain}>
-                    {escapeHtml(entry.domain)}
-                  </div>
-                  <div style={s.watchLabel}>
-                    {escapeHtml(entry.label || "")}
-                  </div>
-                  <div style={s.watchCount}>
-                    {counts[entry.domain] || 0} 条
-                  </div>
-                  <button
-                    style={s.btnDanger}
-                    onClick={() => removeEntry(idx)}>
-                    移除
-                  </button>
-                </div>
-              ))
-            )}
+          {/* AI Configuration */}
+          <div style={s.card}>
+            <div style={s.sectionHeader}>AI 配置</div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+              <select
+                className="search-input"
+                style={{ ...s.input, flex: "0 0 140px" }}
+                value={aiProvider}
+                onChange={(e) => setAiProvider(e.target.value)}>
+                <option value="ollama">Ollama</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+              </select>
+              <input
+                type="text"
+                className="search-input"
+                style={s.input}
+                placeholder="Endpoint"
+                value={aiEndpoint}
+                onChange={(e) => setAiEndpoint(e.target.value)}
+              />
+              <input
+                type="password"
+                className="search-input"
+                style={s.input}
+                placeholder="API Key"
+                value={aiApiKey}
+                onChange={(e) => setAiApiKey(e.target.value)}
+              />
+              <input
+                type="text"
+                className="search-input"
+                style={s.input}
+                placeholder="Model"
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+              />
+              <button style={s.btn} onClick={saveAiConfig}>
+                保存配置
+              </button>
+            </div>
+          </div>
+
+          {/* Data Management */}
+          <div style={s.card}>
+            <div style={s.sectionHeader}>数据管理</div>
+            <div style={s.btnRow}>
+              <button style={s.btnGhost} onClick={exportData}>
+                导出 JSON 数据
+              </button>
+              <button style={s.btnDanger} onClick={clearData}>
+                清空所有历史记录
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Data Management */}
-        <div style={s.section}>
-          <div style={s.sectionHeader}>
-            <div style={s.sectionTitle}>数据管理</div>
+        {/* Records */}
+        <div style={{ marginTop: 40 }}>
+          <div style={{ ...s.title, display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <span>监控的历史 · {records.length}</span>
+            <button
+              style={{ ...s.btn, opacity: aiLoading ? 0.6 : 1 }}
+              onClick={runAnalysis}
+              disabled={aiLoading || records.length === 0}>
+              {aiLoading ? "分析中..." : "AI 分析"}
+            </button>
           </div>
-          <div style={s.actionRow}>
-            <button style={s.btnExport} onClick={exportData}>
-              ⬇ 导出 JSON
-            </button>
-            <button style={s.btnClear} onClick={clearData}>
-              🗑 清空所有记录
-            </button>
+
+          {aiResult && (
+            <div style={{ ...s.card, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: aiResult.keywords.length > 0 ? 12 : 0, color: "var(--foreground)" }}>
+                {aiResult.summary}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {aiResult.keywords.map((kw, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      ...s.badge,
+                      color: "var(--foreground)",
+                      borderColor: "var(--foreground)",
+                      background: "var(--muted)",
+                      fontSize: 11,
+                      padding: "3px 10px",
+                    }}>
+                    {kw}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={s.toolbar}>
+            <input
+              type="text"
+              className="search-input"
+              style={s.searchInput}
+              placeholder="搜索标题、URL..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div style={s.filterBar}>
+            <div
+              style={activeFilter === "all" ? s.filterChipActive : s.filterChip}
+              onClick={() => setActiveFilter("all")}>
+              全部
+            </div>
+            <div
+              style={activeFilter === "pinned" ? s.filterChipActive : s.filterChip}
+              onClick={() => setActiveFilter("pinned")}>
+              ★ 已收藏
+            </div>
+            {domains.map((d) => {
+              const color = getDomainColor(d)
+              return (
+                <div
+                  key={d}
+                  style={
+                    activeFilter === d
+                      ? s.filterChipActive
+                      : { ...s.filterChip, borderColor: color }
+                  }
+                  onClick={() => setActiveFilter(d)}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: color,
+                      marginRight: 4,
+                    }}
+                  />
+                  {d}{" "}
+                  <span style={{ opacity: 0.5 }}>
+                    {counts[d] || 0}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          <div style={s.dataList}>
+            {filtered.length === 0 ? (
+              <div style={s.emptyState}>
+                {searchQuery ? "未发现匹配记录" : "历史空空如也"}
+              </div>
+            ) : (
+              renderRecordsList()
+            )}
           </div>
         </div>
       </div>
@@ -589,12 +1145,8 @@ function OptionsIndex() {
         <div
           style={{
             ...s.toast,
-            borderColor:
-              toast.type === "success" ? "#52c97a" : "#e85d5d",
-            color:
-              toast.type === "success" ? "#52c97a" : "#e85d5d",
+            color: toast.type === "success" ? "var(--foreground)" : "var(--danger)",
           }}>
-          {toast.type === "success" ? "✓ " : "✗ "}
           {toast.msg}
         </div>
       )}

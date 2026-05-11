@@ -149,6 +149,18 @@ async function initDatabase() {
   try {
     db.run("ALTER TABLE records ADD COLUMN updatedAt INTEGER DEFAULT NULL");
   } catch (e) {}
+  try {
+    db.run("ALTER TABLE records ADD COLUMN favIconUrl TEXT DEFAULT ''");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE records ADD COLUMN description TEXT DEFAULT ''");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE records ADD COLUMN ogImage TEXT DEFAULT ''");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE records ADD COLUMN dwellTime INTEGER DEFAULT 0");
+  } catch (e) {}
   db.run(`CREATE TABLE IF NOT EXISTS watchlist (
     domain TEXT PRIMARY KEY,
     label TEXT NOT NULL DEFAULT '',
@@ -413,9 +425,12 @@ function handleExtensionMessage(ws, msg) {
         matchedRule: msg.matchedRule,
         tabId: msg.tabId,
         timestamp: now,
+        favIconUrl: msg.favIconUrl || "",
+        description: msg.description || "",
+        ogImage: msg.ogImage || "",
       };
       dbRun(
-        "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL)",
+        "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt, favIconUrl, description, ogImage) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, ?, ?, ?)",
         [
           record.id,
           record.url,
@@ -425,6 +440,9 @@ function handleExtensionMessage(ws, msg) {
           record.tabId,
           record.timestamp,
           now,
+          record.favIconUrl,
+          record.description,
+          record.ogImage,
         ],
       );
       broadcastToExtensions({ type: "recordAdded", record });
@@ -480,11 +498,17 @@ function handleExtensionMessage(ws, msg) {
     }
     case "recordUpdated": {
       if (msg.record) {
-        dbRun("UPDATE records SET pinned = ?, score = ? WHERE id = ?", [
-          msg.record.pinned ? 1 : 0,
-          msg.record.score,
-          msg.record.id,
-        ]);
+        dbRun(
+          "UPDATE records SET pinned = ?, score = ?, description = ?, ogImage = ?, dwellTime = ? WHERE id = ?",
+          [
+            msg.record.pinned ? 1 : 0,
+            msg.record.score,
+            msg.record.description || "",
+            msg.record.ogImage || "",
+            msg.record.dwellTime || 0,
+            msg.record.id,
+          ],
+        );
         broadcastToExtensions({ type: "recordUpdated", record: msg.record });
       }
       break;
@@ -507,6 +531,7 @@ function createWindow() {
     minWidth: 750,
     minHeight: 500,
     title: "Acuminata",
+    icon: path.join(__dirname, "build", "icon.png"),
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -912,7 +937,7 @@ const toolHandlers = {
       timestamp: now,
     };
     dbRun(
-      "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)",
+      "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt, favIconUrl, description, ogImage) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, '', '', '')",
       [record.id, record.url, record.title, record.domain, record.matchedRule, record.tabId, record.timestamp, now, now],
     );
     record.pinned = 1;
@@ -1606,7 +1631,7 @@ ipcMain.handle("accept-recommendation", (_, id) => {
     timestamp: now,
   };
   dbRun(
-    "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)",
+    "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt, favIconUrl, description, ogImage) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, '', '', '')",
     [
       record.id,
       record.url,

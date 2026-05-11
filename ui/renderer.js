@@ -27,7 +27,7 @@ function formatTime(ts) {
 
 function getDomainColor(val) {
   const entry = watchlist.find((e) => e.domain === val || e.label === val);
-  return entry ? entry.color : "#3f3f46";
+  return entry ? entry.color : "#767d88";
 }
 
 function escapeHtml(str) {
@@ -89,7 +89,7 @@ function renderWatchlist() {
   container.innerHTML = watchlist
     .map(
       (entry, idx) => `
-    <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border:1px solid var(--border); border-radius:6px; background:#0a0a0a">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border:1px solid var(--border); border-radius:6px; background:#1a1a1a">
       <div style="display:flex; align-items:center; gap:8px">
         <div style="width:8px; height:8px; border-radius:50%; background:${entry.color}"></div>
         <span style="font-family:var(--font-mono); font-weight:600">${escapeHtml(entry.domain)}</span>
@@ -98,7 +98,7 @@ function renderWatchlist() {
       </div>
       <div style="display:flex; align-items:center; gap:12px">
         <span style="font-family:var(--font-mono); font-size:11px; color:var(--muted-fg)">${counts[entry.label || entry.domain] || 0} hits</span>
-        <button class="btn-danger btn-ghost" onclick="removeEntry(${idx})" style="padding:2px 6px">×</button>
+        <button class="btn btn-ghost" onclick="removeEntry(${idx})" style="padding:2px 6px">×</button>
       </div>
     </div>
   `,
@@ -152,16 +152,19 @@ function renderRecords() {
     }
     const color = getDomainColor(r.matchedRule);
     const isPinned = r.pinned ? true : false;
+    const favicon = r.favIconUrl ? `<img class="rec-favicon" src="${escapeHtml(r.favIconUrl)}" onerror="this.style.display='none'" />` : "";
+    const desc = r.description ? `<span class="item-url" style="max-width:240px; opacity:0.5">${escapeHtml(r.description.slice(0, 60))}</span>` : `<span class="item-url">${escapeHtml(r.url)}</span>`;
 
     html += `
       <div class="data-item" data-url="${encodeURIComponent(r.url)}">
         <input type="checkbox" class="rec-checkbox" data-action="rec-select" data-id="${r.id}" ${selectedIds.has(r.id) ? "checked" : ""}>
+        ${favicon}
         <div class="item-body">
           <div class="item-title">${escapeHtml(r.title || r.url)}</div>
           <div class="item-meta">
             <span class="badge" style="border-color:${color}; color:${color}">${escapeHtml(r.matchedRule)}</span>
             <span>${formatTime(r.timestamp)}</span>
-            <span class="item-url">${escapeHtml(r.url)}</span>
+            ${desc}
           </div>
         </div>
         <div class="item-actions">

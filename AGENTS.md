@@ -1,34 +1,88 @@
-# Browser History Tracker
+# Acuminata
 
-Chrome extension (Manifest V3). No build step required.
+Electron desktop app + Chrome extension for tracking browsing history with AI agent analysis.
 
-## Loading the extension
+## Project layout
 
-1. Open `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked** → select this directory
+| Directory | What | Tech |
+|---|---|---|
+| `/` (root) | Electron desktop app | Node.js, sql.js, ws |
+| `extend/` | Chrome extension (Manifest V3) | Plasmo, React 18, TypeScript |
+| `ui/` | Desktop renderer (no framework) | vanilla HTML/JS |
+| `agent/` | AI agent modules | Node.js (imported by main.js) |
+| `locales/` | i18n JSON | zh-CN only currently |
+
+Two separate `package.json` files — **root** (Electron) and **extend/** (Plasmo extension).
+
+## Commands
+
+```
+# Desktop
+npm start          # launch Electron
+npm run dev        # launch with DevTools open
+
+# Extension (cd extend/)
+npm run build      # production build → build/chrome-mv3-prod/
+npm run dev        # dev with HMR
+npx tsc --noEmit  # type-check only
+```
+
+Load the Chrome extension from `extend/build/chrome-mv3-prod/`.
 
 ## Architecture
 
-- `manifest.json` - Extension manifest (entrypoints, permissions)
-- `background.js` - Service worker; tracks tab URL changes, stores records
-- `pages/popup.*` - Popup UI (history list, stats)
-- `pages/options.*` - Settings page (watchlist management, data export)
+**Electron app is the source of truth.** It runs a WebSocket server on port 8766 and stores data in SQLite (via `sql.js`). DB path: `app.getPath("userData")/tracker.db`. The DB auto-saves with 1s debounce, flushed on quit.
 
-## Data model
-
-Records stored in `chrome.storage.local`:
-```json
-{
-  "watchlist": [{ "domain": "bilibili.com", "label": "B站", "color": "#fb7299" }],
-  "enabled": true,
-  "records": [{ "id": "...", "url": "...", "title": "...", "domain": "...", "matchedRule": "...", "tabId": ..., "timestamp": ... }]
-}
+```
+Browser → extension (background.ts) → WS → Electron (main.js) → SQLite
+                                                ↓
+                                        broadcast to renderer (ui/)
 ```
 
-## Behavior notes
+**Chrome extension** has two modes, persisted in `chrome.storage.local.mode`:
 
-- Deduplication: same URL+tab within 60s is ignored
-- `chrome://` and `chrome-extension://` URLs are never tracked
-- Max 10,000 records; oldest are evicted when limit is reached
-- Service worker wakes on `tabs.onUpdated`, `tabs.onActivated`, and `runtime.onInstalled`
+- `"ws"`: connects to `ws://127.0.0.1:8766`, sends/receives records bidirectionally
+- `"local"`: stores in `chrome.storage.local` only, max 500 records (oldest evicted), no WS
+
+Extension files:
+- `background.ts` — service worker, tab tracking, WS client, mode switching
+- `popup.tsx` — stats overview only (total, today, sites, top domain); no record list
+- `options.tsx` — settings + full 500-record list with search, domain filter chips, pin toggle, date groups
+
+When mode changes (SET_MODE message), `background.ts` connects or disconnects WS immediately.
+
+## Data model (SQLite)
+
+Tables: `records`, `watchlist`, `settings`, `recommendations`.
+
+Key columns in `records`: `id`, `url`, `title`, `domain`, `matchedRule`, `tabId`, `timestamp`, `pinned`, `score`, `createdAt`, `updatedAt`.
+
+Deduplication: same URL + same tabId within 60s is ignored. `chrome://` and `chrome-extension://` URLs are never tracked.
+
+The Electron `main.js` has a "directory clustering" feature — same-path URLs across different domains in the same watchlist group are treated as duplicates, and daily re-visits auto-pin records with score increment (max 1/day).
+
+## IPC channels (renderer ↔ main)
+
+All channels are in `preload.js`. Key ones: `get-records-page` (paginated + filter), `get-statistics`, `toggle-record-pin`, `add-watchlist`/`remove-watchlist`, `trigger-agent-analysis`, `agent-approve-actions`/`agent-dismiss-actions`.
+
+## Design system
+
+`DESIGN.md` is authoritative. All UI must follow:
+
+- **Colors** (CSS vars): `--background:#000`, `--foreground:#fff`, `--muted:#1a1a1a`, `--muted-fg:#767d88`, `--border:#27272a`
+- **Zero shadows** — no `box-shadow` anywhere
+- **No gradients** in the interface
+- **Typography**: single sans-serif (Inter/system-ui), JetBrains Mono for data values only; tight line-heights (1.0–1.4), negative letter-spacing on headings
+- **Radius**: 4px (buttons), 8px (cards/containers), no pill shapes
+- **Buttons**: transparent background, thin border, Cool Slate text; no filled backgrounds
+
+Both `ui/index.html` and `extend/options.tsx` use matching CSS variable blocks. Keep them in sync.
+
+## Key gotchas
+
+- Two `package.json` — `npm install` in root **and** `extend/` separately
+- Chrome extension CSP blocks external fonts; uses `system-ui` / `JetBrains Mono` fallback stack
+- Extension uses Plasmo v0.90.5 — entrypoints autodetected by filename convention (`background.ts`, `popup.tsx`, `options.tsx`)
+- `sql.js` returns all rows as objects (not arrays); migrated from WASM file buffer, not native SQLite
+- The Electron app is single-instance locked (`requestSingleInstanceLock`)
+- Extension `options.tsx` was refactored to match `ui/` CSS patterns — if changing one, check the other
