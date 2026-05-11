@@ -5,9 +5,19 @@ const http = require("http");
 const https = require("https");
 const WebSocket = require("ws");
 const initSqlJs = require("sql.js");
-const { getTool, getReadTools, getWriteTools, getOpenAITools, getAnthropicTools } = require("./agent/tools");
+const {
+  getTool,
+  getReadTools,
+  getWriteTools,
+  getOpenAITools,
+  getAnthropicTools,
+} = require("./agent/tools");
 const { agentLoop, executeApprovedActions } = require("./agent/executor");
-const { buildDeleteReflectionPrompt, buildRejectReflectionPrompt, applyReflection } = require("./agent/reflect");
+const {
+  buildDeleteReflectionPrompt,
+  buildRejectReflectionPrompt,
+  applyReflection,
+} = require("./agent/reflect");
 
 const EXTENSION_PORT = 8766;
 const DB_PATH = path.join(app.getPath("userData"), "tracker.db");
@@ -42,7 +52,10 @@ function loadLocale() {
   const row = dbGet("SELECT value FROM settings WHERE key = ?", ["locale"]);
   if (row) localeCode = row.value;
   else {
-    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["locale", localeCode]);
+    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [
+      "locale",
+      localeCode,
+    ]);
   }
   try {
     const file = path.join(__dirname, "locales", localeCode + ".json");
@@ -204,7 +217,9 @@ async function initDatabase() {
     tool_call_id TEXT DEFAULT NULL,
     created_at INTEGER NOT NULL
   )`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_am_conv ON agent_messages(conversation_id)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_am_conv ON agent_messages(conversation_id)`,
+  );
   db.run(`CREATE TABLE IF NOT EXISTS agent_memories (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
@@ -227,65 +242,147 @@ async function initDatabase() {
     created_at INTEGER NOT NULL,
     resolved_at INTEGER DEFAULT NULL
   )`);
-  try { db.run("DELETE FROM settings WHERE key = 'agent.profile'"); } catch (e) {}
+  try {
+    db.run("DELETE FROM settings WHERE key = 'agent.profile'");
+  } catch (e) {}
   markDirty();
 }
 
-function agentNow() { return Date.now(); }
-function agentId() { return `${agentNow()}-${Math.random().toString(36).slice(2, 8)}`; }
+function agentNow() {
+  return Date.now();
+}
+function agentId() {
+  return `${agentNow()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function dbConversationCreate(type, systemPrompt) {
   const id = agentId();
   const now = agentNow();
-  dbRun("INSERT INTO agent_conversations (id, type, system_prompt, created_at) VALUES (?, ?, ?, ?)", [id, type, systemPrompt || "", now]);
+  dbRun(
+    "INSERT INTO agent_conversations (id, type, system_prompt, created_at) VALUES (?, ?, ?, ?)",
+    [id, type, systemPrompt || "", now],
+  );
   return id;
 }
 function dbConversationComplete(id, summary) {
-  dbRun("UPDATE agent_conversations SET summary = ?, completed_at = ? WHERE id = ?", [summary || "", agentNow(), id]);
+  dbRun(
+    "UPDATE agent_conversations SET summary = ?, completed_at = ? WHERE id = ?",
+    [summary || "", agentNow(), id],
+  );
 }
-function dbMessageInsert(conversationId, round, role, content, toolCalls, toolCallId) {
+function dbMessageInsert(
+  conversationId,
+  round,
+  role,
+  content,
+  toolCalls,
+  toolCallId,
+) {
   const id = agentId();
-  dbRun("INSERT INTO agent_messages (id, conversation_id, round, role, content, tool_calls, tool_call_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [id, conversationId, round, role, content || "", toolCalls ? JSON.stringify(toolCalls) : null, toolCallId || null, agentNow()]);
+  dbRun(
+    "INSERT INTO agent_messages (id, conversation_id, round, role, content, tool_calls, tool_call_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      id,
+      conversationId,
+      round,
+      role,
+      content || "",
+      toolCalls ? JSON.stringify(toolCalls) : null,
+      toolCallId || null,
+      agentNow(),
+    ],
+  );
 }
-function dbMemoryUpsert(type, key, value, weight, sourceConvId, sourceReflection) {
-  const existing = dbGet("SELECT id, weight FROM agent_memories WHERE type = ? AND key = ?", [type, key]);
+function dbMemoryUpsert(
+  type,
+  key,
+  value,
+  weight,
+  sourceConvId,
+  sourceReflection,
+) {
+  const existing = dbGet(
+    "SELECT id, weight FROM agent_memories WHERE type = ? AND key = ?",
+    [type, key],
+  );
   const now = agentNow();
   if (existing) {
-    const newWeight = Math.min(1, Math.max(0, existing.weight * 0.7 + weight * 0.3));
-    dbRun("UPDATE agent_memories SET value = ?, weight = ?, updated_at = ?, source_reflection = ? WHERE id = ?",
-      [typeof value === "string" ? value : JSON.stringify(value), newWeight, now, sourceReflection || null, existing.id]);
+    const newWeight = Math.min(
+      1,
+      Math.max(0, existing.weight * 0.7 + weight * 0.3),
+    );
+    dbRun(
+      "UPDATE agent_memories SET value = ?, weight = ?, updated_at = ?, source_reflection = ? WHERE id = ?",
+      [
+        typeof value === "string" ? value : JSON.stringify(value),
+        newWeight,
+        now,
+        sourceReflection || null,
+        existing.id,
+      ],
+    );
   } else {
-    dbRun("INSERT INTO agent_memories (id, type, key, value, weight, source_conversation_id, source_reflection, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [agentId(), type, key, typeof value === "string" ? value : JSON.stringify(value), weight, sourceConvId || null, sourceReflection || null, now, now]);
+    dbRun(
+      "INSERT INTO agent_memories (id, type, key, value, weight, source_conversation_id, source_reflection, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        agentId(),
+        type,
+        key,
+        typeof value === "string" ? value : JSON.stringify(value),
+        weight,
+        sourceConvId || null,
+        sourceReflection || null,
+        now,
+        now,
+      ],
+    );
   }
 }
 function dbMemoriesByType(type) {
-  return dbAll("SELECT * FROM agent_memories WHERE type = ? ORDER BY weight DESC", [type]);
+  return dbAll(
+    "SELECT * FROM agent_memories WHERE type = ? ORDER BY weight DESC",
+    [type],
+  );
 }
 function dbAllMemories() {
   return dbAll("SELECT * FROM agent_memories ORDER BY updated_at DESC");
 }
 function dbPendingInsert(conversationId, toolName, args) {
   const id = agentId();
-  dbRun("INSERT INTO agent_pending_actions (id, conversation_id, tool_name, args, created_at) VALUES (?, ?, ?, ?, ?)",
-    [id, conversationId, toolName, JSON.stringify(args), agentNow()]);
+  dbRun(
+    "INSERT INTO agent_pending_actions (id, conversation_id, tool_name, args, created_at) VALUES (?, ?, ?, ?, ?)",
+    [id, conversationId, toolName, JSON.stringify(args), agentNow()],
+  );
   return id;
 }
 function dbPendingGetAll() {
-  return dbAll("SELECT * FROM agent_pending_actions WHERE status = 'pending' ORDER BY created_at ASC");
+  return dbAll(
+    "SELECT * FROM agent_pending_actions WHERE status = 'pending' ORDER BY created_at ASC",
+  );
 }
 function dbPendingResolve(id, status) {
-  dbRun("UPDATE agent_pending_actions SET status = ?, resolved_at = ? WHERE id = ?", [status, agentNow(), id]);
+  dbRun(
+    "UPDATE agent_pending_actions SET status = ?, resolved_at = ? WHERE id = ?",
+    [status, agentNow(), id],
+  );
 }
 function buildAgentProfile() {
   const memories = dbAllMemories();
   const profile = {
-    preferences: memories.filter((m) => m.type === "preference").map((m) => ({ key: m.key, weight: m.weight, value: m.value })),
-    antiPatterns: memories.filter((m) => m.type === "anti_pattern").map((m) => m.key),
-    insights: memories.filter((m) => m.type === "insight").map((m) => ({ key: m.key, value: m.value, weight: m.weight })),
+    preferences: memories
+      .filter((m) => m.type === "preference")
+      .map((m) => ({ key: m.key, weight: m.weight, value: m.value })),
+    antiPatterns: memories
+      .filter((m) => m.type === "anti_pattern")
+      .map((m) => m.key),
+    insights: memories
+      .filter((m) => m.type === "insight")
+      .map((m) => ({ key: m.key, value: m.value, weight: m.weight })),
     domainHealth: {},
-    lastUpdated: memories.length > 0 ? Math.max(...memories.map((m) => m.updated_at || 0)) : null,
+    lastUpdated:
+      memories.length > 0
+        ? Math.max(...memories.map((m) => m.updated_at || 0))
+        : null,
   };
   for (const m of memories.filter((m) => m.type === "domain_health")) {
     profile.domainHealth[m.key] = m.weight;
@@ -885,7 +982,10 @@ ipcMain.handle("export-data", () => {
 ipcMain.handle("delete-records", (_, ids) => {
   if (!ids || ids.length === 0) return false;
   const placeholders = ids.map(() => "?").join(",");
-  const deletedRecords = dbAll(`SELECT * FROM records WHERE id IN (${placeholders})`, ids);
+  const deletedRecords = dbAll(
+    `SELECT * FROM records WHERE id IN (${placeholders})`,
+    ids,
+  );
   dbRun(`DELETE FROM records WHERE id IN (${placeholders})`, ids);
   broadcastToExtensions({ type: "recordsCleared" });
   if (deletedRecords.length > 0) {
@@ -949,10 +1049,12 @@ const toolHandlers = {
     const domain = args.domain || "";
     let sql, params;
     if (domain) {
-      sql = "SELECT id, url, title, domain, matchedRule, timestamp, pinned, score FROM records WHERE (title LIKE ? OR url LIKE ?) AND score >= ? AND matchedRule = ? ORDER BY timestamp DESC LIMIT ?";
+      sql =
+        "SELECT id, url, title, domain, matchedRule, timestamp, pinned, score FROM records WHERE (title LIKE ? OR url LIKE ?) AND score >= ? AND matchedRule = ? ORDER BY timestamp DESC LIMIT ?";
       params = [`%${query}%`, `%${query}%`, minScore, domain, limit];
     } else {
-      sql = "SELECT id, url, title, domain, matchedRule, timestamp, pinned, score FROM records WHERE (title LIKE ? OR url LIKE ?) AND score >= ? ORDER BY timestamp DESC LIMIT ?";
+      sql =
+        "SELECT id, url, title, domain, matchedRule, timestamp, pinned, score FROM records WHERE (title LIKE ? OR url LIKE ?) AND score >= ? ORDER BY timestamp DESC LIMIT ?";
       params = [`%${query}%`, `%${query}%`, minScore, limit];
     }
     const rows = dbAll(sql, params);
@@ -966,16 +1068,24 @@ const toolHandlers = {
     const total = dbGet("SELECT COUNT(*) as total FROM records").total;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const today = dbGet("SELECT COUNT(*) as count FROM records WHERE timestamp >= ?", [todayStart.getTime()]).count;
-    const domainRows = dbAll("SELECT matchedRule, COUNT(*) as count FROM records GROUP BY matchedRule ORDER BY count DESC");
+    const today = dbGet(
+      "SELECT COUNT(*) as count FROM records WHERE timestamp >= ?",
+      [todayStart.getTime()],
+    ).count;
+    const domainRows = dbAll(
+      "SELECT matchedRule, COUNT(*) as count FROM records GROUP BY matchedRule ORDER BY count DESC",
+    );
     const ruleToLabel = {};
-    watchlist.forEach((w) => { ruleToLabel[w.domain] = w.label || w.domain; });
+    watchlist.forEach((w) => {
+      ruleToLabel[w.domain] = w.label || w.domain;
+    });
     const domainCounts = {};
     for (const r of domainRows) {
       const label = ruleToLabel[r.matchedRule] || r.matchedRule;
       domainCounts[label] = (domainCounts[label] || 0) + r.count;
     }
-    let topDomain = null, topDomainCount = 0;
+    let topDomain = null,
+      topDomainCount = 0;
     for (const label in domainCounts) {
       if (!topDomain || domainCounts[label] > topDomainCount) {
         topDomain = label;
@@ -983,12 +1093,24 @@ const toolHandlers = {
       }
     }
     const sites = new Set(watchlist.map((w) => w.label || w.domain)).size;
-    return { total, today, sites, enabled, domainCounts, topDomain, topDomainCount, watchlistCount: watchlist.length };
+    return {
+      total,
+      today,
+      sites,
+      enabled,
+      domainCounts,
+      topDomain,
+      topDomainCount,
+      watchlistCount: watchlist.length,
+    };
   },
   get_recommendations: (args) => {
     const status = args.status !== undefined ? args.status : 0;
     const limit = args.limit || 50;
-    return dbAll("SELECT * FROM recommendations WHERE status = ? ORDER BY createdAt DESC LIMIT ?", [status, limit]);
+    return dbAll(
+      "SELECT * FROM recommendations WHERE status = ? ORDER BY createdAt DESC LIMIT ?",
+      [status, limit],
+    );
   },
   get_watchlist: () => {
     return { watchlist, count: watchlist.length };
@@ -1000,7 +1122,10 @@ const toolHandlers = {
     const ids = args.ids;
     if (!ids || ids.length === 0) return { error: "No IDs provided" };
     const placeholders = ids.map(() => "?").join(",");
-    const deletedRecords = dbAll(`SELECT * FROM records WHERE id IN (${placeholders})`, ids);
+    const deletedRecords = dbAll(
+      `SELECT * FROM records WHERE id IN (${placeholders})`,
+      ids,
+    );
     dbRun(`DELETE FROM records WHERE id IN (${placeholders})`, ids);
     broadcastToExtensions({ type: "recordsCleared" });
     if (deletedRecords.length > 0) {
@@ -1016,14 +1141,26 @@ const toolHandlers = {
     if (idx === -1) return { error: "Domain not found in watchlist" };
     watchlist[idx].regexFilter = regexFilter;
     watchlist[idx].regexTarget = regexTarget;
-    dbRun("UPDATE watchlist SET regexFilter = ?, regexTarget = ? WHERE domain = ?", [regexFilter, regexTarget, domain]);
+    dbRun(
+      "UPDATE watchlist SET regexFilter = ?, regexTarget = ? WHERE domain = ?",
+      [regexFilter, regexTarget, domain],
+    );
     broadcastToExtensions({ type: "watchlistUpdated", watchlist });
-    return { updated: domain, regex_filter: regexFilter, regex_target: regexTarget, reason: args.reason || "" };
+    return {
+      updated: domain,
+      regex_filter: regexFilter,
+      regex_target: regexTarget,
+      reason: args.reason || "",
+    };
   },
   update_record_score: (args) => {
     const id = args.id;
     const score = Math.max(0, Math.min(100, args.score || 0));
-    dbRun("UPDATE records SET score = ?, updatedAt = ? WHERE id = ?", [score, Date.now(), id]);
+    dbRun("UPDATE records SET score = ?, updatedAt = ? WHERE id = ?", [
+      score,
+      Date.now(),
+      id,
+    ]);
     const record = dbGet("SELECT * FROM records WHERE id = ?", [id]);
     if (record) broadcastToExtensions({ type: "recordUpdated", record });
     return record ? { updated: id, score } : { error: "Record not found" };
@@ -1041,7 +1178,17 @@ const toolHandlers = {
     };
     dbRun(
       "INSERT INTO records (id, url, title, domain, matchedRule, tabId, timestamp, pinned, score, createdAt, updatedAt, favIconUrl, description, ogImage) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, '', '', '')",
-      [record.id, record.url, record.title, record.domain, record.matchedRule, record.tabId, record.timestamp, now, now],
+      [
+        record.id,
+        record.url,
+        record.title,
+        record.domain,
+        record.matchedRule,
+        record.tabId,
+        record.timestamp,
+        now,
+        now,
+      ],
     );
     record.pinned = 1;
     record.score = 1;
@@ -1064,7 +1211,11 @@ ipcMain.handle("agent-get-pending", () => {
 });
 
 ipcMain.handle("agent-approve-actions", async (_, actionIds) => {
-  const results = await executeApprovedActions(actionIds, toolHandlers, dbPendingGetAll);
+  const results = await executeApprovedActions(
+    actionIds,
+    toolHandlers,
+    dbPendingGetAll,
+  );
   for (const id of actionIds) dbPendingResolve(id, "approved");
   broadcastPendingActions();
   return results;
@@ -1313,7 +1464,9 @@ function callAnthropic(prompt) {
         status,
         data.slice(0, 500),
       );
-      throw new Error(t("ai.error.anthropicNotJson", { status: String(status) }));
+      throw new Error(
+        t("ai.error.anthropicNotJson", { status: String(status) }),
+      );
     }
     if (result.error)
       throw new Error(result.error.message || JSON.stringify(result.error));
@@ -1342,13 +1495,20 @@ async function callOllamaToolsNative(messages, tools) {
   const base = aiConfig.endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
   const url = new URL(base + "/api/chat");
   const ollamaMessages = messages.map((m) => {
-    if (m.role === "tool") return { role: "user", content: `[Tool result for ${m.tool_call_id}]: ${m.content}` };
+    if (m.role === "tool")
+      return {
+        role: "user",
+        content: `[Tool result for ${m.tool_call_id}]: ${m.content}`,
+      };
     if (m.role === "assistant" && m.tool_calls) {
       const blocks = m.tool_calls.map((tc) => ({
         type: "tool_use",
         id: tc.id,
         name: tc.name,
-        input: typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments,
+        input:
+          typeof tc.arguments === "string"
+            ? JSON.parse(tc.arguments)
+            : tc.arguments,
       }));
       if (m.content) blocks.unshift({ type: "text", text: m.content });
       return { role: "assistant", content: blocks };
@@ -1357,7 +1517,11 @@ async function callOllamaToolsNative(messages, tools) {
   });
   const ollamaTools = tools.map((t) => ({
     type: "function",
-    function: { name: t.name, description: t.description, parameters: t.input_schema },
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.input_schema,
+    },
   }));
   const body = JSON.stringify({
     model: aiConfig.model,
@@ -1367,29 +1531,34 @@ async function callOllamaToolsNative(messages, tools) {
   });
   const { data } = await httpRequestJson(url, "POST", {}, body);
   const parsed = JSON.parse(data);
-  if (parsed.error) throw new Error(parsed.error.message || JSON.stringify(parsed.error));
+  if (parsed.error)
+    throw new Error(parsed.error.message || JSON.stringify(parsed.error));
   const msg = parsed.message || {};
   const toolCalls = [];
   let content = "";
   if (msg.content) {
     if (typeof msg.content === "string") content = msg.content;
-    else for (const block of msg.content) {
-      if (block.type === "text") content += block.text;
-      if (block.type === "tool_use") {
-        toolCalls.push({
-          id: block.id || `call_${toolCalls.length}`,
-          name: block.name,
-          arguments: JSON.stringify(block.input || {}),
-        });
+    else
+      for (const block of msg.content) {
+        if (block.type === "text") content += block.text;
+        if (block.type === "tool_use") {
+          toolCalls.push({
+            id: block.id || `call_${toolCalls.length}`,
+            name: block.name,
+            arguments: JSON.stringify(block.input || {}),
+          });
+        }
       }
-    }
   }
   if (msg.tool_calls) {
     for (const tc of msg.tool_calls) {
       toolCalls.push({
         id: tc.id || `call_${toolCalls.length}`,
         name: tc.function?.name || tc.name,
-        arguments: typeof tc.function?.arguments === "string" ? tc.function.arguments : JSON.stringify(tc.function?.arguments || tc.arguments || {}),
+        arguments:
+          typeof tc.function?.arguments === "string"
+            ? tc.function.arguments
+            : JSON.stringify(tc.function?.arguments || tc.arguments || {}),
       });
     }
   }
@@ -1409,16 +1578,22 @@ When you are done and don't need more tools, respond with:
 
 Always use valid JSON.`;
 
-  const userContent = messages.map((m) => {
-    if (m.role === "tool") return `[Tool result for ${m.tool_call_id}]: ${m.content}`;
-    return `${m.role}: ${m.content || ""}`;
-  }).join("\n\n");
+  const userContent = messages
+    .map((m) => {
+      if (m.role === "tool")
+        return `[Tool result for ${m.tool_call_id}]: ${m.content}`;
+      return `${m.role}: ${m.content || ""}`;
+    })
+    .join("\n\n");
 
   const prompt = `${systemPrompt}\n\n---\n\n${userContent}`;
   const response = await callOllama(prompt);
   try {
     const parsed = JSON.parse(response);
-    return { content: parsed.content || "", tool_calls: parsed.tool_calls || [] };
+    return {
+      content: parsed.content || "",
+      tool_calls: parsed.tool_calls || [],
+    };
   } catch (e) {
     return { content: response, tool_calls: [] };
   }
@@ -1428,7 +1603,10 @@ async function callOllamaTools(messages, tools) {
   try {
     return await callOllamaToolsNative(messages, tools);
   } catch (e) {
-    console.log("[Ollama] Native tool calling failed, falling back to prompt injection:", e.message);
+    console.log(
+      "[Ollama] Native tool calling failed, falling back to prompt injection:",
+      e.message,
+    );
     return callOllamaToolsPrompt(messages, tools);
   }
 }
@@ -1436,9 +1614,17 @@ async function callOllamaTools(messages, tools) {
 async function callOpenAITools(messages, tools) {
   const base = aiConfig.endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
   const url = new URL(base + "/v1/chat/completions");
-  const msgs = messages[0]?.role === "system"
-    ? messages
-    : [{ role: "system", content: "You are an intelligent browsing history assistant. Use tools to search records, analyze patterns, and manage the watchlist." }, ...messages];
+  const msgs =
+    messages[0]?.role === "system"
+      ? messages
+      : [
+          {
+            role: "system",
+            content:
+              "You are an intelligent browsing history assistant. Use tools to search records, analyze patterns, and manage the watchlist.",
+          },
+          ...messages,
+        ];
   const body = JSON.stringify({
     model: aiConfig.model,
     messages: msgs,
@@ -1474,16 +1660,33 @@ async function callOpenAITools(messages, tools) {
 async function callAnthropicTools(messages, tools) {
   const base = aiConfig.endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
   const url = new URL(base + "/v1/messages");
-  const systemMsg = messages[0]?.role === "system" ? messages[0].content : "You are an intelligent browsing history assistant. Use tools to search records, analyze patterns, and manage the watchlist.";
-  const conversationMsgs = messages[0]?.role === "system" ? messages.slice(1) : messages;
+  const systemMsg =
+    messages[0]?.role === "system"
+      ? messages[0].content
+      : "You are an intelligent browsing history assistant. Use tools to search records, analyze patterns, and manage the watchlist.";
+  const conversationMsgs =
+    messages[0]?.role === "system" ? messages.slice(1) : messages;
   const anthropicMessages = conversationMsgs.map((m) => {
-    if (m.role === "tool") return { role: "user", content: [{ type: "tool_result", tool_use_id: m.tool_call_id, content: m.content }] };
+    if (m.role === "tool")
+      return {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: m.tool_call_id,
+            content: m.content,
+          },
+        ],
+      };
     if (m.role === "assistant" && m.tool_calls) {
       const blocks = m.tool_calls.map((tc) => ({
         type: "tool_use",
         id: tc.id,
         name: tc.name,
-        input: typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments,
+        input:
+          typeof tc.arguments === "string"
+            ? JSON.parse(tc.arguments)
+            : tc.arguments,
       }));
       if (m.content) blocks.unshift({ type: "text", text: m.content });
       return { role: "assistant", content: blocks };
@@ -1515,7 +1718,8 @@ async function callAnthropicTools(messages, tools) {
   let textContent = "";
   if (result.content) {
     for (const block of result.content) {
-      if (block.type === "text" && block.text != null) textContent += block.text;
+      if (block.type === "text" && block.text != null)
+        textContent += block.text;
       if (block.type === "tool_use") {
         toolCalls.push({
           id: block.id,
@@ -1546,7 +1750,8 @@ async function callAITools(messages, tools) {
 
 const callAIFns = {
   callOpenAIWithTools: (messages, tools) => callOpenAITools(messages, tools),
-  callAnthropicWithTools: (messages, tools) => callAnthropicTools(messages, tools),
+  callAnthropicWithTools: (messages, tools) =>
+    callAnthropicTools(messages, tools),
   callOllamaWithTools: (messages, tools) => callOllamaTools(messages, tools),
 };
 
@@ -1608,14 +1813,20 @@ ipcMain.handle("get-locale", () => {
 
 ipcMain.handle("set-locale", (_, code) => {
   localeCode = code;
-  dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["locale", code]);
+  dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [
+    "locale",
+    code,
+  ]);
   const file = path.join(__dirname, "locales", code + ".json");
-  try { locale = JSON.parse(fs.readFileSync(file, "utf8")); }
-  catch (e) {
+  try {
+    locale = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
     try {
       const file2 = path.join(__dirname, "locales", "zh-CN.json");
       locale = JSON.parse(fs.readFileSync(file2, "utf8"));
-    } catch (e2) { locale = {}; }
+    } catch (e2) {
+      locale = {};
+    }
   }
 });
 
@@ -1709,7 +1920,9 @@ ipcMain.handle("trigger-agent-analysis", async () => {
       return { error: t("ai.emptyRecords"), keywords: [], summary: "" };
     }
     const ruleToLabel = {};
-    watchlist.forEach((w) => { ruleToLabel[w.domain] = w.label || w.domain; });
+    watchlist.forEach((w) => {
+      ruleToLabel[w.domain] = w.label || w.domain;
+    });
 
     const sysMsg = `You are a private content recommendation expert. You have access to tools to explore the user's browsing history. Use them to gain deeper insights.
 
@@ -1722,10 +1935,13 @@ After gathering data, produce a final analysis as a JSON object:
 
 Always respond in the same language as the user's records. Be concise.`;
 
-    const recordSummary = records.slice(0, 10).map((r) => {
-      const label = ruleToLabel[r.matchedRule] || r.matchedRule;
-      return `[${label}] ${(r.title || "").slice(0, 80)} (score:${r.score || 0})`;
-    }).join("\n");
+    const recordSummary = records
+      .slice(0, 10)
+      .map((r) => {
+        const label = ruleToLabel[r.matchedRule] || r.matchedRule;
+        return `[${label}] ${(r.title || "").slice(0, 80)} (score:${r.score || 0})`;
+      })
+      .join("\n");
 
     const userMsg = `User has ${records.length} high-value records. Sample:\n${recordSummary}\n\nAnalyze their preferences thoroughly using the available tools.`;
 
@@ -1755,7 +1971,9 @@ Always respond in the same language as the user's records. Be concise.`;
     const jsonStr = extractJson(result || "");
     let analysis = { summary: "", keywords: [] };
     if (jsonStr) {
-      try { analysis = JSON.parse(jsonStr); } catch (e) {}
+      try {
+        analysis = JSON.parse(jsonStr);
+      } catch (e) {}
     }
 
     // Fallback: if no JSON found, use the raw result as summary

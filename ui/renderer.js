@@ -457,11 +457,98 @@ window.electronAPI.onUpdate((data) => {
   }
 });
 
+async function triggerAgentWithCommand(customCommand) {
+  const inputEl = document.getElementById("agentCommandInput");
+  const btn = document.getElementById("btnSubmitCommand");
+  const consoleBox = document.getElementById("agent-console-box");
+
+  // UI 状态锁定
+  inputEl.disabled = true;
+  btn.disabled = true;
+  btn.innerHTML = "⏳";
+
+  // 清空上一次的记录，并把用户的输入打印到终端上
+  if (consoleBox) {
+    consoleBox.innerHTML = "";
+    if (customCommand) {
+      consoleBox.innerHTML += `<div style='color: #fff; font-size: 12px; margin-bottom: 8px;'>➜ ${escapeHtml(customCommand)}</div>`;
+    }
+    consoleBox.innerHTML +=
+      "<div style='color: #a7a7a7; font-size: 12px;'>[系统] 正在建立与大模型的链接...</div>";
+  }
+
+  document.getElementById("aiProfileText").innerHTML =
+    "<span style='color: var(--muted-fg); font-family: var(--font-mono);'>[System] Agent is analyzing...</span>";
+  document.getElementById("aiTags").innerHTML = "";
+
+  try {
+    // 传递指令给后端（需要在 preload.js 和 main.js 中支持接收此参数）
+    const analysis =
+      await window.electronAPI.triggerAgentAnalysis(customCommand);
+
+    if (analysis.error) {
+      document.getElementById("aiProfileText").innerHTML =
+        `<span style="color: var(--danger)">分析失败: ${escapeHtml(analysis.error)}</span>`;
+    } else {
+      document.getElementById("aiProfileText").textContent =
+        analysis.summary || "";
+      const tagsHtml = (analysis.keywords || [])
+        .map(
+          (kw) =>
+            `<span class="badge" style="border-color: var(--muted-fg); color: var(--foreground); background: var(--muted); font-size: 12px; padding: 3px 10px;">${escapeHtml(kw)}</span>`,
+        )
+        .join("");
+      document.getElementById("aiTags").innerHTML = tagsHtml;
+      loadRecommendations();
+      loadPendingActions();
+    }
+  } catch (e) {
+    showToast(String(e), "error");
+  } finally {
+    // 恢复 UI 状态
+    inputEl.disabled = false;
+    btn.disabled = false;
+    btn.innerHTML = "发送";
+    inputEl.value = ""; // 清空输入框
+    inputEl.focus();
+  }
+}
+
+// ✅ 绑定回车键事件
+document
+  .getElementById("agentCommandInput")
+  .addEventListener("keypress", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      triggerAgentWithCommand(this.value.trim());
+    }
+  });
+
+// ✅ 绑定发送按钮事件
+document.getElementById("btnSubmitCommand").onclick = function () {
+  const val = document.getElementById("agentCommandInput").value.trim();
+  triggerAgentWithCommand(val);
+};
+
+// (可选) 兼容保留原来的唤醒按钮
+const oldRunBtn = document.getElementById("btnRunAgent");
+if (oldRunBtn) {
+  oldRunBtn.onclick = () => triggerAgentWithCommand("");
+}
+
 document.getElementById("btnRunAgent").onclick = async function () {
   const btn = this;
   btn.innerHTML = "⏳ 模型推演中...";
   btn.style.opacity = "0.7";
   btn.style.pointerEvents = "none";
+
+  // ✅ 新增：每次唤醒时清空之前的终端记录，并打印初始状态
+  const consoleBox = document.getElementById("agent-console-box");
+  if (consoleBox) {
+    consoleBox.innerHTML =
+      "<div style='color: #a7a7a7; font-size: 12px;'>[系统] 正在建立与大模型的链接...</div>";
+  }
+
   document.getElementById("aiProfileText").innerHTML =
     "<span style='color: var(--muted-fg); font-family: var(--font-mono);'>[System] Agent is analyzing your records...</span>";
   document.getElementById("aiTags").innerHTML = "";

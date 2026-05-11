@@ -33,8 +33,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setLocale: (code) => ipcRenderer.invoke("set-locale", code),
 
   agentGetPending: () => ipcRenderer.invoke("agent-get-pending"),
-  agentApproveActions: (ids) => ipcRenderer.invoke("agent-approve-actions", ids),
-  agentDismissActions: (ids) => ipcRenderer.invoke("agent-dismiss-actions", ids),
+  agentApproveActions: (ids) =>
+    ipcRenderer.invoke("agent-approve-actions", ids),
+  agentDismissActions: (ids) =>
+    ipcRenderer.invoke("agent-dismiss-actions", ids),
   agentGetProfile: () => ipcRenderer.invoke("agent-get-profile"),
   agentAutoClean: () => ipcRenderer.invoke("agent-auto-clean"),
 });
