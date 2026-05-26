@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd C:\\Roy\\workspace\\browser-history-tracker\\extend && npx prettier --write \"$FILE_PATH\" 2>nul || echo prettier-skip",
+            "description": "Auto-format TS/TSX files with Prettier after edits in extend/"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -Command \"$f='%FILE_PATH%'; if($f -match '(locales\\\\(en|zh-CN)\\.json|shared\\\\types\\.d\\.s|tracker\\.db)') { Write-Error 'Protected file - confirm before editing'; exit 1 } else { exit 0 }\"",
+            "description": "Protect sensitive files (locale JSONs, shared types, SQLite DB) from accidental edits"
+          }
+        ]
+      }
+    ]
+  }
+}

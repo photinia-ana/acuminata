@@ -4,6 +4,11 @@
   "header.tracking": "Tracking",
   "header.paused": "Paused",
 
+  "tab.overview": "Overview",
+  "tab.history": "History",
+  "tab.agent": "Agent",
+  "tab.settings": "Settings",
+
   "filter.all": "All",
   "filter.pinned": "★ Pinned",
   "filter.ai": "✨ AI Recommend",
@@ -23,6 +28,7 @@
 
   "record.pin": "Pin",
   "record.pinned": "Pinned",
+  "record.selected": "{n} selected",
 
   "empty.noMatch": "No matches",
   "empty.noRecords": "No records",
@@ -51,6 +57,7 @@
   "ai.summary": "📊 Preference Analysis",
   "ai.keywords": "🔑 Recommended Keywords",
   "ai.recs": "📋 Discovered Recommendations",
+  "ai.recs.empty": "No recommendations yet. Trigger an analysis to get started.",
   "ai.clearRecs": "Clear Recommendations",
   "ai.testBtn": "Test Connection",
   "ai.testing": "Testing...",
@@ -73,6 +80,40 @@
   "provider.minimax": "MiniMax (Anthropic Compatible)",
   "provider.default": "Unknown",
 
+  "agent.title": "🧠 Agent Actions",
+  "agent.chatPlaceholder": "Type a command or question for the Agent...",
+  "agent.inputPlaceholder": "Ask the Agent...",
+  "agent.send": "Send",
+  "agent.accept": "Accept",
+  "agent.dismiss": "Dismiss",
+  "agent.approve": "Approve",
+  "agent.approveAll": "Approve All",
+  "agent.dismissAll": "Dismiss All",
+  "agent.autoClean": "Auto-Clean",
+  "agent.autoCleanConfirm": "Run auto-clean? The Agent will identify and propose cleanup actions for review.",
+  "agent.profileAnti": "Anti-patterns",
+  "agent.preferences": "Learned Preferences",
+  "agent.analysisSummary": "Analysis Summary",
+  "agent.records": "Records analyzed",
+  "agent.pending": "Pending actions",
+  "agent.pendingTitle": "Pending Actions",
+  "agent.noPending": "No pending actions",
+  "agent.roleUser": "You",
+  "agent.roleSystem": "System",
+  "agent.roleAgent": "Agent",
+  "agent.actionDelete": "Delete {n} records",
+  "agent.actionRegex": "Update regex for {domain}",
+  "agent.actionScore": "Set score to {score}",
+  "agent.actionAdd": "Add \"{title}\"",
+  "agent.cleanPending": "Agent found {n} items to clean. Review and approve below.",
+  "agent.cleanNothing": "Agent found nothing to clean. Your data looks tidy!",
+  "agent.cleanFailed": "Auto-clean failed: {msg}",
+  "agent.actionApproved": "Action approved and executed",
+
+  "data.management": "Data Management",
+
+  "lang.selector": "🌐 Language",
+
   "toast.connected": "{provider} connected",
   "toast.connectFailed": "Connection failed: {msg}",
   "toast.unknownError": "Unknown error",
@@ -92,21 +133,5 @@
   "confirm.clearRecs": "Clear all recommendations?",
   "confirm.removeDomain": "Remove {domain}? Records will not be deleted.",
   "confirm.clearAll": "Clear all browsing records? This cannot be undone.",
-  "confirm.batchDelete": "Delete {n} selected records?",
-
-  "agent.title": "🧠 Agent Actions",
-  "agent.autoClean": "Auto-Clean",
-  "agent.profileAnti": "Anti-patterns",
-  "agent.approve": "Approve",
-  "agent.dismiss": "Dismiss",
-  "agent.actionDelete": "Delete {n} records",
-  "agent.actionRegex": "Update regex for {domain}",
-  "agent.actionScore": "Set score to {score}",
-  "agent.actionAdd": "Add \"{title}\"",
-  "agent.cleanPending": "Agent found {n} items to clean. Review and approve below.",
-  "agent.cleanNothing": "Agent found nothing to clean. Your data looks tidy!",
-  "agent.cleanFailed": "Auto-clean failed: {msg}",
-  "agent.actionApproved": "Action approved and executed",
-
-  "lang.selector": "🌐 Language"
+  "confirm.batchDelete": "Delete {n} selected records?"
 }
