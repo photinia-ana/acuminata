@@ -7,12 +7,13 @@ const {
   getWriteTools,
   getOpenAITools,
   getAnthropicTools,
+  getTool,
 } = require("./tools");
 
 const MAX_ROUNDS = 5;
 
 // 新增 broadcastFn 参数，用于在执行具体工具时向前端汇报进度
-async function executeToolCalls(toolCalls, toolHandlers, broadcastFn) {
+async function executeToolCalls(toolCalls, executeTool, broadcastFn) {
   const results = [];
   const newPending = [];
 
@@ -40,13 +41,12 @@ async function executeToolCalls(toolCalls, toolHandlers, broadcastFn) {
       continue;
     }
 
-    const handler = toolHandlers[name];
-    if (!handler) {
+    if (!executeTool.getAllHandlerNames().includes(name)) {
       results.push({ name, result: { error: "Unknown tool: " + name } });
       continue;
     }
 
-    const tool = require("./tools").getTool(name);
+    const tool = getTool(name);
     if (tool && tool.category === "write") {
       const action = {
         tool: name,
@@ -71,7 +71,7 @@ async function executeToolCalls(toolCalls, toolHandlers, broadcastFn) {
       }
     } else {
       try {
-        const result = await handler(args);
+        const result = executeTool(name, args);
         results.push({ name, result });
         // 📢 广播：工具执行完成
         if (broadcastFn) {
@@ -95,9 +95,8 @@ async function executeToolCalls(toolCalls, toolHandlers, broadcastFn) {
 
 async function agentLoop(
   messages,
-  aiConfig,
-  callAIFns,
-  toolHandlers,
+  providers,
+  executeTool,
   broadcastFn,
   conversationId,
   dbSaveMessage,
@@ -132,18 +131,8 @@ async function agentLoop(
     }
 
     let response;
-    const provider = aiConfig.provider;
 
-    if (provider === "openai") {
-      response = await callAIFns.callOpenAIWithTools(messages, openaiTools);
-    } else if (provider === "anthropic" || provider === "minimax") {
-      response = await callAIFns.callAnthropicWithTools(
-        messages,
-        anthropicTools,
-      );
-    } else {
-      response = await callAIFns.callOllamaWithTools(messages, tools);
-    }
+    response = await providers.callWithTools(messages, tools);
 
     const toolCalls = response.tool_calls || [];
     const content = response.content || "";
@@ -184,7 +173,7 @@ async function agentLoop(
     // 将 broadcastFn 传给执行器
     const { results, newPending } = await executeToolCalls(
       toolCalls,
-      toolHandlers,
+      executeTool,
       broadcastFn,
     );
 
@@ -256,24 +245,21 @@ async function agentLoop(
   return { result: finalContent, pendingActions: allPendingActions };
 }
 
-async function executeApprovedActions(actionIds, toolHandlers, getPendingFn) {
+async function executeApprovedActions(actionIds, executeTool, getPendingFn) {
   const results = [];
   const pendingActions = getPendingFn ? getPendingFn() : [];
 
   for (const action of pendingActions) {
     if (actionIds.includes(action.id)) {
-      const handler = toolHandlers[action.tool_name || action.tool];
       const args =
         typeof action.args === "string"
           ? JSON.parse(action.args)
           : action.args || {};
-      if (handler) {
-        try {
-          const result = await handler(args);
-          results.push({ action, result });
-        } catch (e) {
-          results.push({ action, result: { error: e.message } });
-        }
+      try {
+        const result = executeTool(action.tool_name || action.tool, args);
+        results.push({ action, result });
+      } catch (e) {
+        results.push({ action, result: { error: e.message } });
       }
     }
   }

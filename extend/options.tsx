@@ -1,46 +1,7 @@
 import { useEffect, useState } from "react"
 import logoIcon from "url:~assets/icon.png"
 import type { WatchlistEntry, HistoryRecord } from "../shared/types"
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}
-
-function formatTime(ts: number): string {
-  const d = new Date(ts)
-  const now = new Date()
-  const diff = now.getTime() - d.getTime()
-  if (diff < 60000) return "刚刚"
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-  if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
-  }
-  return d.toLocaleDateString("zh-CN", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-function dateGroupLabel(ts: number): string {
-  const d = new Date(ts)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return "今天"
-  if (d.toDateString() === yesterday.toDateString()) return "昨天"
-  return d.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-}
+import { escapeHtml, formatTime, dateGroupLabel, getDomainColor, matchesSearch } from "../shared/utils"
 
 const s: Record<string, React.CSSProperties> = {
   layout: {
@@ -535,11 +496,6 @@ function OptionsIndex() {
     setTimeout(() => setToast(null), 2500)
   }
 
-  function getDomainColor(domain: string): string {
-    const entry = watchlist.find((e) => e.domain === domain || e.label === domain)
-    return entry?.color || "var(--muted-fg)"
-  }
-
   const counts: Record<string, number> = {}
   for (const r of records) {
     counts[r.matchedRule] = (counts[r.matchedRule] || 0) + 1
@@ -549,13 +505,7 @@ function OptionsIndex() {
 
   let filtered = records
   if (searchQuery) {
-    const q = searchQuery.toLowerCase()
-    filtered = filtered.filter(
-      (r) =>
-        (r.title && r.title.toLowerCase().includes(q)) ||
-        (r.url && r.url.toLowerCase().includes(q)) ||
-        (r.matchedRule && r.matchedRule.toLowerCase().includes(q)),
-    )
+    filtered = filtered.filter((r) => matchesSearch(r, searchQuery))
   }
   if (activeFilter === "pinned") {
     filtered = filtered.filter((r) => r.pinned)
@@ -696,7 +646,7 @@ function OptionsIndex() {
           </div>,
         )
       }
-      const color = getDomainColor(r.matchedRule)
+      const color = getDomainColor(r.matchedRule, watchlist)
       const isPinned = !!r.pinned
 
       rows.push(
@@ -1079,7 +1029,7 @@ function OptionsIndex() {
               ★ 已收藏
             </div>
             {domains.map((d) => {
-              const color = getDomainColor(d)
+              const color = getDomainColor(d, watchlist)
               return (
                 <div
                   key={d}

@@ -23,17 +23,7 @@ let selectedIds = new Set();
  * @returns {string}
  */
 function formatTime(ts) {
-  const d = new Date(ts);
-  const now = new Date();
-  const diff = now - d;
-  if (diff < 60000) return "刚刚";
-  if (diff < 3600000) return Math.floor(diff / 60000) + "m前";
-  if (d.toDateString() === now.toDateString())
-    return d.toLocaleTimeString("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  return d.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+  return window.sharedUtils.formatTime(ts);
 }
 
 /**
@@ -41,8 +31,7 @@ function formatTime(ts) {
  * @returns {string}
  */
 function getDomainColor(val) {
-  const entry = watchlist.find((e) => e.domain === val || e.label === val);
-  return entry ? entry.color : "#767d88";
+  return window.sharedUtils.getDomainColor(val, watchlist);
 }
 
 /**
@@ -50,13 +39,7 @@ function getDomainColor(val) {
  * @returns {string}
  */
 function escapeHtml(str) {
-  return String(str).replace(
-    /[&<>"']/g,
-    (m) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        m
-      ],
-  );
+  return window.sharedUtils.escapeHtml(str);
 }
 
 /**
@@ -78,17 +61,7 @@ function setWsStatus(connected) {
 }
 
 function dateGroupLabel(ts) {
-  const d = new Date(ts),
-    today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "今天";
-  if (d.toDateString() === yesterday.toDateString()) return "昨天";
-  return d.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  return window.sharedUtils.dateGroupLabel(ts);
 }
 
 // --- 渲染逻辑 ---
@@ -150,13 +123,7 @@ function renderRecords() {
   // 综合过滤 (搜索 + 筛选)
   let filtered = records;
   if (searchQuery) {
-    const q = searchQuery.toLowerCase();
-    filtered = filtered.filter(
-      (r) =>
-        (r.title && r.title.toLowerCase().includes(q)) ||
-        (r.url && r.url.toLowerCase().includes(q)) ||
-        (r.matchedRule && r.matchedRule.toLowerCase().includes(q)),
-    );
+    filtered = filtered.filter((r) => window.sharedUtils.matchesSearch(r, searchQuery));
   }
 
   if (filtered.length === 0) {

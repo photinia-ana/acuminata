@@ -86,3 +86,13 @@ Both `ui/index.html` and `extend/options.tsx` use matching CSS variable blocks. 
 - `sql.js` returns all rows as objects (not arrays); migrated from WASM file buffer, not native SQLite
 - The Electron app is single-instance locked (`requestSingleInstanceLock`)
 - Extension `options.tsx` was refactored to match `ui/` CSS patterns — if changing one, check the other
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in the repo's GitHub Issues, accessed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context. Read `CONTEXT.md` at the repo root, plus ADRs in `docs/adr/`. See `docs/agents/domain.md`.
